@@ -282,10 +282,20 @@
   function leadScore(m, hand, ctx) {
     const rest = without(hand, m.cards);
     if (rest.length === 0) return 1000;
-    let sc = -4 * turnsEstimate(rest) - 0.5 * m.main + 0.2 * m.n;
+    const rt = turnsEstimate(rest);
+    let sc = -4 * rt - 0.5 * m.main + 0.2 * m.n;
     if (ctx && ctx.minOpp !== undefined) {
       if (ctx.minOpp <= 1 && m.type === 'single' && m.main < 14) sc -= 8;
       if (ctx.minOpp <= 2 && m.type === 'pair' && m.main < 14) sc -= 4;
+      if (ctx.lvl >= 1) {
+        // 给队友送牌：队友只剩 1~2 张且地主还多时，出小单张/小对子让队友接走
+        if (ctx.partner >= 0 && ctx.minOpp > ctx.pCount) {
+          if (ctx.pCount === 1 && m.type === 'single') sc += 7 - 0.6 * (m.main - 3);
+          else if (ctx.pCount === 2 && m.type === 'pair') sc += 6 - 0.6 * (m.main - 3);
+        }
+        // 记牌：这手牌没人压得过，且打完只剩一手，稳赢
+        if (ctx.un && rt <= 1 && !couldBeat(m, ctx.un)) sc += 12;
+      }
     }
     return sc;
   }
@@ -293,7 +303,57 @@
   function contextOf(c) {
     const isLandlord = c.me === c.landlord;
     const opps = [0, 1, 2].filter((p) => p !== c.me && (isLandlord || p === c.landlord));
-    return { isLandlord, opps, minOpp: Math.min.apply(null, opps.map((p) => c.counts[p])) };
+    const partner = isLandlord ? -1 : 3 - c.me - c.landlord;
+    return {
+      isLandlord, opps, minOpp: Math.min.apply(null, opps.map((p) => c.counts[p])),
+      partner, pCount: partner >= 0 ? c.counts[partner] : 99, lCount: c.counts[c.landlord],
+      lvl: c.level === undefined ? 1 : c.level, un: null,
+    };
+  }
+
+  // ---------- 记牌 ----------
+  const FULL = (() => { const a = new Array(18).fill(0); for (let r = 3; r <= 15; r++) a[r] = 4; a[16] = 1; a[17] = 1; return a; })();
+
+  function rankCounts(cards) {
+    const a = new Array(18).fill(0);
+    for (const c of cards) a[c.rank]++;
+    return a;
+  }
+
+  /** 未见过的牌（按点数计数）：54 张 − 自己手牌 − 已打出的牌。ctx.played 为 18 长度的点数计数数组 */
+  function unseenOf(ctx) {
+    const u = FULL.slice();
+    for (const c of ctx.hand) u[c.rank]--;
+    if (ctx.played) for (let r = 3; r <= 17; r++) u[r] -= ctx.played[r];
+    return u;
+  }
+
+  function runExists(u, from, len, need) {
+    for (let s = from; s + len - 1 <= 14; s++) {
+      let ok = true;
+      for (let r = s; r < s + len; r++) if (u[r] < need) { ok = false; break; }
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  /** 对手手里（未见牌中）是否可能有同型更大的牌（不考虑炸弹） */
+  function couldBeat(m, u) {
+    const main = m.main;
+    switch (m.type) {
+      case 'rocket': return false;
+      case 'bomb': return false;
+      case 'single': for (let r = main + 1; r <= 17; r++) if (u[r] >= 1) return true; return false;
+      case 'pair': for (let r = main + 1; r <= 15; r++) if (u[r] >= 2) return true; return false;
+      case 'triple': case 'triple1': case 'triple2':
+        for (let r = main + 1; r <= 15; r++) if (u[r] >= 3) return true; return false;
+      case 'straight': return runExists(u, main + 1, m.n, 1);
+      case 'pairs': return runExists(u, main + 1, m.n / 2, 2);
+      case 'plane': return runExists(u, main + 1, m.n / 3, 3);
+      case 'plane1': return runExists(u, main + 1, m.n / 4, 3);
+      case 'plane2': return runExists(u, main + 1, m.n / 5, 3);
+      default: for (let r = main + 1; r <= 15; r++) if (u[r] >= 4) return true; return false;
+    }
   }
 
   /** 给人类玩家的提示序列（按推荐度排序） */
@@ -322,6 +382,7 @@
     const { hand, last, lastBy, me, landlord, counts } = ctx;
     const all = genMoves(hand);
     const cx = contextOf(ctx);
+    if (cx.lvl >= 1 && ctx.played) cx.un = unseenOf(ctx);
     const myCount = hand.length;
     const finish = all.find((m) => m.n === myCount);
     if (finish && (!last || canBeat(finish, last))) return finish;
@@ -362,8 +423,242 @@
     return null;
   }
 
+
+  // ---------- 蒙特卡洛推演（确定化采样 + 启发式快速对局） ----------
+
+  /** 无信息的快速策略：与 aiPlay 相同，但不带记牌信息 */
+  function rolloutMove(hand, last, lastBy, me, landlord, counts, rnd) {
+    return aiPlay({ hand, last, lastBy, me, landlord, counts, level: 1 }, rnd);
+  }
+
+  let synId = 100000;
+  function synCards(ranks) {
+    return ranks.map((r) => ({ id: synId++, rank: r, suit: 0 }));
+  }
+
+  /**
+   * 采样一个“可能的世界”：把未见牌随机分给两位对手。
+   * 地主的底牌（已公开且尚未打出的部分）一定在地主手里。
+   * 返回 hands[3]，不一致时返回 null。
+   */
+  function sampleWorld(ctx, u, rnd) {
+    const { me, landlord, counts } = ctx;
+    const pool = [];
+    for (let r = 3; r <= 17; r++) for (let k = 0; k < u[r]; k++) pool.push(r);
+    const others = [0, 1, 2].filter((p) => p !== me);
+    const need = counts[others[0]] + counts[others[1]];
+    if (pool.length !== need) return null;
+    const hands = [null, null, null];
+    hands[me] = ctx.hand;
+    let known = [];
+    if (me !== landlord && ctx.bottom) {
+      const bc = rankCounts(ctx.bottom);
+      const pl = ctx.playedBy ? ctx.playedBy[landlord] : null;
+      for (let r = 3; r <= 17; r++) {
+        const k = Math.max(0, bc[r] - (pl ? pl[r] : 0));
+        for (let i = 0; i < k; i++) known.push(r);
+      }
+      // 已知牌必须确实在未见牌里
+      const tmp = u.slice();
+      for (const r of known) { if (tmp[r] <= 0) { known = []; break; } tmp[r]--; }
+      if (known.length) {
+        // 从 pool 中移除
+        const left = u.slice();
+        for (const r of known) left[r]--;
+        pool.length = 0;
+        for (let r = 3; r <= 17; r++) for (let k = 0; k < left[r]; k++) pool.push(r);
+      }
+    }
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+    }
+    const a = others[0], b = others[1];
+    if (me !== landlord) {
+      // others 中包含地主与搭档
+      const L = landlord, P = a === L ? b : a;
+      const nL = counts[L] - known.length;
+      if (nL < 0) return null;
+      hands[L] = synCards(known.concat(pool.slice(0, nL)));
+      hands[P] = synCards(pool.slice(nL));
+    } else {
+      hands[a] = synCards(pool.slice(0, counts[a]));
+      hands[b] = synCards(pool.slice(counts[a]));
+    }
+    return hands;
+  }
+
+  /** 从给定局面打到终局，返回赢家座位。first 为我方先出的 move（null=不要） */
+  function playout(hands, st, rnd) {
+    const hs = [hands[0], hands[1], hands[2]];
+    let last = st.last, lastBy = st.lastBy, passes = st.passes, turn = st.turn;
+    const landlord = st.landlord;
+    let steps = 0;
+    let first = st.first;
+    let haveFirst = st.hasFirst;
+    while (steps++ < 160) {
+      const p = turn;
+      let mv;
+      if (haveFirst) { mv = first; haveFirst = false; }
+      else {
+        const counts = [hs[0].length, hs[1].length, hs[2].length];
+        mv = rolloutMove(hs[p], last, lastBy, p, landlord, counts, rnd);
+      }
+      if (mv) {
+        hs[p] = without(hs[p], mv.cards);
+        last = mv; lastBy = p; passes = 0;
+        if (hs[p].length === 0) return p;
+        turn = (p + 1) % 3;
+      } else {
+        passes++;
+        if (passes === 2) { last = null; passes = 0; turn = lastBy; }
+        else turn = (p + 1) % 3;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * 蒙特卡洛出牌决策（生成器：每隔一小段计算 yield 一次，便于界面保持流畅）。
+   * opt: {ms: 时间预算, worlds: 固定采样数(测试用), maxWorlds, cands: 候选数上限}
+   * 返回 move 或 null（不要）。
+   */
+  function* mcGen(ctx, rnd, opt) {
+    rnd = rnd || Math.random;
+    opt = opt || {};
+    const { hand, last, me, landlord } = ctx;
+    const all = genMoves(hand);
+    const myCount = hand.length;
+    const finish = all.find((m) => m.n === myCount);
+    if (finish && (!last || canBeat(finish, last))) return finish;
+
+    const cx = contextOf(ctx);
+    const isBomb = (m) => m.type === 'bomb' || m.type === 'rocket';
+    const K = opt.cands || 6;
+    let cands;
+    if (!last) {
+      const normal = all.filter((m) => !isBomb(m));
+      const pool = normal.length ? normal : all;
+      pool.forEach((m) => { m._h = leadScore(m, hand, cx); });
+      pool.sort((a, b) => b._h - a._h);
+      cands = pool.slice(0, K);
+      const bomb = all.filter(isBomb).sort((a, b) => a.main - b.main)[0];
+      if (bomb && myCount <= 10) cands.push(bomb);
+    } else {
+      const beats = all.filter((m) => canBeat(m, last));
+      if (!beats.length) return null;
+      const normal = beats.filter((m) => !isBomb(m));
+      normal.forEach((m) => { m._h = -3 * turnsEstimate(without(hand, m.cards)) - 0.4 * m.main; });
+      normal.sort((a, b) => b._h - a._h);
+      cands = normal.slice(0, K - 1);
+      const bomb = beats.filter(isBomb).sort((a, b) => (a.type === 'rocket') - (b.type === 'rocket') || a.main - b.main)[0];
+      if (bomb) cands.push(bomb);
+      cands.push(null); // 不要
+    }
+    if (cands.length === 1) return cands[0];
+
+    const u = unseenOf(ctx);
+    const prior = aiPlay(ctx, rnd); // 启发式首选：作为先验
+    const nC = cands.length;
+    const wins = new Array(nC).fill(0);
+    let nW = 0;
+    const deadline = Date.now() + (opt.ms || 400);
+    const maxW = opt.worlds || opt.maxWorlds || 400;
+    let sliceStart = Date.now();
+    const st0 = { last: last, lastBy: ctx.lastBy, passes: 0, turn: me, landlord, first: null, hasFirst: true };
+    // passes：当前这一轮已有的连续“不要”数（由上层告知，缺省 0）
+    st0.passes = ctx.passes || 0;
+    while (nW < maxW) {
+      const hands = sampleWorld(ctx, u, rnd);
+      if (!hands) return prior;
+      for (let i = 0; i < nC; i++) {
+        const st = Object.assign({}, st0, { first: cands[i] });
+        const w = playout(hands, st, rnd);
+        const mineWin = me === landlord ? w === landlord : (w !== landlord && w >= 0);
+        if (mineWin) wins[i]++;
+      }
+      nW++;
+      const now = Date.now();
+      if (!opt.worlds && now >= deadline && nW >= (opt.minWorlds || 8)) break;
+      if (now - sliceStart > 10) { sliceStart = now; yield; }
+    }
+    // 先验：启发式首选加半场胜利，防止小样本噪声推翻合理的常规出法
+    const bonus = opt.prior === undefined ? 0.6 : opt.prior;
+    let bi = 0, bs = -Infinity;
+    for (let i = 0; i < nC; i++) {
+      const isPrior = (cands[i] === null && prior === null) || (cands[i] && prior && cands[i].cards === prior.cards) ||
+        (cands[i] && prior && sameCards(cands[i].cards, prior.cards));
+      const sc = wins[i] + (isPrior ? bonus : 0);
+      if (sc > bs) { bs = sc; bi = i; }
+    }
+    return cands[bi];
+  }
+
+  function sameCards(a, b) {
+    if (a.length !== b.length) return false;
+    const ids = new Set(a.map((c) => c.id));
+    return b.every((c) => ids.has(c.id));
+  }
+
+  /** 同步版本（测试、对战脚本用） */
+  function aiPlayMC(ctx, rnd, opt) {
+    const it = mcGen(ctx, rnd, opt);
+    let r = it.next();
+    while (!r.done) r = it.next();
+    return r.value;
+  }
+
+
+  // ---------- 叫牌：模拟“我当地主”的胜率 ----------
+  /** 随机补全底牌与两家手牌，用快速策略打完，估计这手牌当地主的胜率（生成器） */
+  function* bidWinRate(hand, rnd, n) {
+    rnd = rnd || Math.random;
+    const have = rankCounts(hand);
+    const pool = [];
+    for (let r = 3; r <= 17; r++) for (let k = 0; k < FULL[r] - have[r]; k++) pool.push(r);
+    let win = 0;
+    let sliceStart = Date.now();
+    for (let i = 0; i < n; i++) {
+      for (let j = pool.length - 1; j > 0; j--) {
+        const k = Math.floor(rnd() * (j + 1));
+        const t = pool[j]; pool[j] = pool[k]; pool[k] = t;
+      }
+      const hands = [
+        hand.concat(synCards(pool.slice(0, 3))),
+        synCards(pool.slice(3, 20)),
+        synCards(pool.slice(20, 37)),
+      ];
+      const w = playout(hands, { last: null, lastBy: -1, passes: 0, turn: 0, landlord: 0, first: null, hasFirst: false }, rnd);
+      if (w === 0) win++;
+      const now = Date.now();
+      if (now - sliceStart > 10) { sliceStart = now; yield; }
+    }
+    return win / n;
+  }
+
+  const BID_TH = [0.5, 0.56, 0.62];
+
+  function levelFromRate(p, th) {
+    th = th || BID_TH;
+    return p >= th[2] ? 3 : p >= th[1] ? 2 : p >= th[0] ? 1 : 0;
+  }
+
+  function* bidGen(hand, bidMax, rnd, opt) {
+    opt = opt || {};
+    const p = yield* bidWinRate(hand, rnd, opt.n || 40);
+    const level = levelFromRate(p, opt.th);
+    return level > bidMax ? level : 0;
+  }
+
+  function aiBidMC(hand, bidMax, rnd, opt) {
+    const it = bidGen(hand, bidMax, rnd, opt);
+    let r = it.next();
+    while (!r.done) r = it.next();
+    return r.value;
+  }
+
   return {
     LABEL, SUITS, newDeck, shuffle, sortHand, groupByRank,
-    classify, canBeat, genMoves, hints, handStrength, aiBid, aiPlay, contextOf, turnsEstimate,
+    classify, canBeat, genMoves, hints, handStrength, aiBid, aiPlay, aiPlayMC, mcGen, bidGen, aiBidMC, bidWinRate, levelFromRate, unseenOf, rankCounts, couldBeat, contextOf, turnsEstimate,
   };
 });

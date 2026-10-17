@@ -1,7 +1,7 @@
 /* 斗地主：界面与对局流程 */
 (function () {
   'use strict';
-  const { classify, canBeat, hints, aiPlay, aiBid, newDeck, shuffle, sortHand, LABEL, SUITS } = window.DDZ;
+  const { classify, canBeat, hints, aiPlay, aiBid, mcGen, bidGen, newDeck, shuffle, sortHand, LABEL, SUITS } = window.DDZ;
 
   const $ = (id) => document.getElementById(id);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,6 +18,19 @@
     try { localStorage.setItem(STORE_KEY, JSON.stringify(stats)); } catch (e) { /* ignore */ }
   }
 
+  // 电脑难度：0 简单（基础启发式）· 1 普通（记牌 + 农民配合）· 2 困难（再加蒙特卡洛推演）
+  const LEVEL_KEY = 'ddz-level-v1';
+  const LEVEL_NAMES = ['简单', '普通', '困难'];
+  let level = 2;
+  try {
+    const lv = parseInt(localStorage.getItem(LEVEL_KEY), 10);
+    if (lv >= 0 && lv <= 2) level = lv;
+  } catch (e) { /* ignore */ }
+  function setLevel(v) {
+    level = v;
+    try { localStorage.setItem(LEVEL_KEY, String(v)); } catch (e) { /* ignore */ }
+  }
+
   // ---------- 状态 ----------
   const S = {
     gen: 0, phase: 'menu', paused: false,
@@ -25,12 +38,24 @@
     bidMax: 0, bidder: -1, bids: [null, null, null],
     last: null, lastBy: -1, passes: 0, plays: [0, 0, 0], bombs: 0, base: 1,
     selected: new Set(), hintList: null, hintIdx: 0, humanTurn: false, resolve: null,
+    played: new Array(18).fill(0), playedBy: [new Array(18).fill(0), new Array(18).fill(0), new Array(18).fill(0)],
   };
   let layout = { left0: 0, step: 0, cw: 56, n: 0 };
 
   async function tick(ms) {
     await sleep(ms);
     while (S.paused) await sleep(150);
+  }
+
+  // 驱动生成器：每个切片之间让出线程，局被取消时中止
+  async function drive(it, gen) {
+    let r = it.next();
+    while (!r.done) {
+      await sleep(0);
+      if (S.gen !== gen) return null;
+      r = it.next();
+    }
+    return r.value;
   }
 
   // ---------- 渲染：牌 ----------
@@ -303,14 +328,20 @@
     return '累计积分 ' + stats.score + ' · ' + stats.games + ' 局 · 胜率 ' + rate + '%';
   }
 
+  function levelSeg() {
+    return '<div class="seg-wrap"><span>电脑水平</span><div class="seg" id="levelSeg">' +
+      LEVEL_NAMES.map((n, i) => '<button type="button" data-act="lv' + i + '" class="' + (i === level ? 'on' : '') + '">' + n + '</button>').join('') +
+      '</div></div>';
+  }
+
   function showStartMenu() {
-    showPanel('<h1>斗地主</h1><p>人机对战 · 叫分抢地主</p><div class="stats">' + statsLine() + '</div>' +
+    showPanel('<h1>斗地主</h1><p>人机对战 · 叫分抢地主</p><div class="stats">' + statsLine() + '</div>' + levelSeg() +
       '<div class="btns"><button class="btn primary" type="button" data-act="start">开始游戏</button>' +
       '<a class="btn ghost" href="poker.html">玩德州扑克</a></div>' + RULES);
   }
   function showGameMenu() {
     S.paused = true;
-    showPanel('<h2>菜单</h2><div class="stats">' + statsLine() + '</div><div class="btns">' +
+    showPanel('<h2>菜单</h2><div class="stats">' + statsLine() + '</div>' + levelSeg() + '<div class="btns">' +
       '<button class="btn primary" type="button" data-act="resume">继续游戏</button>' +
       '<button class="btn" type="button" data-act="restart">放弃本局，重新发牌</button>' +
       '<button class="btn ghost" type="button" data-act="resetScore">清空积分</button>' +
@@ -323,6 +354,10 @@
     const act = b.dataset.act;
     if (act === 'start' || act === 'restart' || act === 'again') { hideOverlay(); newRound(); }
     else if (act === 'resume' || act === 'review') hideOverlay();
+    else if (/^lv[012]$/.test(act)) {
+      setLevel(+act[2]);
+      document.querySelectorAll('#levelSeg button').forEach((x) => x.classList.toggle('on', x.dataset.act === act));
+    }
     else if (act === 'resetScore') {
       stats = { score: 0, games: 0, wins: 0 };
       saveStats(); renderTop(); toast('积分已清空');
@@ -342,6 +377,7 @@
       phase: 'bidding', paused: false, landlord: -1, bidMax: 0, bidder: -1, bids: [null, null, null],
       last: null, lastBy: -1, passes: 0, plays: [0, 0, 0], bombs: 0, base: 1,
       selected: new Set(), hintList: null, hintIdx: 0, humanTurn: false, resolve: null,
+      played: new Array(18).fill(0), playedBy: [new Array(18).fill(0), new Array(18).fill(0), new Array(18).fill(0)],
     });
     S.hands = [deck.slice(0, 17), deck.slice(17, 34), deck.slice(34, 51)].map(sortHand);
     S.bottom = deck.slice(51);
@@ -362,9 +398,15 @@
         if (S.gen !== gen) return;
         v = a.bid;
       } else {
-        await tick(700);
+        const t0 = Date.now();
+        if (level >= 1) {
+          v = await drive(bidGen(S.hands[p], S.bidMax, Math.random, { n: 40 }), gen);
+          if (S.gen !== gen) return;
+        } else {
+          v = aiBid(S.hands[p], S.bidMax);
+        }
+        await tick(Math.max(150, 700 - (Date.now() - t0)));
         if (S.gen !== gen) return;
-        v = aiBid(S.hands[p], S.bidMax);
       }
       S.bids[p] = v;
       if (v > S.bidMax) { S.bidMax = v; S.bidder = p; }
@@ -402,6 +444,7 @@
     S.lastBy = p;
     S.passes = 0;
     S.plays[p]++;
+    for (const c of cards) { S.played[c.rank]++; S.playedBy[p][c.rank]++; }
     if (info.type === 'bomb' || info.type === 'rocket') {
       S.bombs++;
       toast(info.type === 'rocket' ? '火箭！倍数翻倍' : '炸弹！倍数翻倍', 1200);
@@ -427,12 +470,22 @@
           act = await humanAct();
         }
       } else {
-        await tick(700 + Math.random() * 500);
-        if (S.gen !== gen) return;
-        const mv = aiPlay({
+        const t0 = Date.now();
+        const ctx = {
           hand: S.hands[p], last: S.last && S.last.info, lastBy: S.lastBy,
           me: p, landlord: S.landlord, counts: S.hands.map((h) => h.length),
-        });
+          played: S.played, playedBy: S.playedBy, bottom: S.bottom, passes: S.passes, level,
+        };
+        let mv;
+        if (level >= 2) {
+          // 推演在后台分片进行，最长约 0.5 秒，界面不卡
+          mv = await drive(mcGen(ctx, Math.random, { ms: 500 }), gen);
+          if (S.gen !== gen) return;
+        } else {
+          mv = aiPlay(ctx);
+        }
+        await tick(Math.max(150, 700 + Math.random() * 500 - (Date.now() - t0)));
+        if (S.gen !== gen) return;
         act = mv ? { play: mv.cards } : { pass: true };
       }
       if (S.gen !== gen) return;
