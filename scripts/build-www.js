@@ -4,8 +4,8 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const out = path.join(root, 'www');
 const files = [
-  'index.html', 'ddz.html', 'poker.html', 'mahjong.html', 'sichuan.html',
-  'style.css', 'poker.css', 'engine.js', 'game.js', 'poker-engine.js', 'poker.js', 'sfx.js',
+  'index.html', 'ddz.html', 'poker.html', 'mahjong.html', 'sichuan.html', 'bridge.html',
+  'style.css', 'poker.css', 'bridge.css', 'bridge-engine.js', 'bridge-bid.js', 'bridge-play.js', 'bridge.js', 'engine.js', 'game.js', 'poker-engine.js', 'poker.js', 'sfx.js',
   'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png',
 ];
 fs.rmSync(out, { recursive: true, force: true });

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="桥牌">
+  <title>桥牌</title>
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="bridge.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="tb-side"><span id="boardInfo">第 1 副</span><span id="vulInfo"></span></div>
+      <a class="tb-link" href="index.html">大厅</a>
+      <div class="tb-side tb-right">
+        <span id="scoreInfo">南北 0</span>
+        <button id="soundBtn" type="button" aria-label="声音开关">🔊</button>
+        <button id="menuBtn" type="button" aria-label="菜单">☰</button>
+      </div>
+    </header>
+
+    <div id="info"></div>
+    <section id="north" class="hand-zone"></section>
+
+    <main id="mid">
+      <div id="west" class="side-zone"></div>
+      <div id="center"></div>
+      <div id="east" class="side-zone"></div>
+    </main>
+
+    <section id="band" class="hand-zone"></section>
+    <section id="south" class="hand-zone"></section>
+    <footer id="bottom"></footer>
+    <div id="toast" role="status"></div>
+    <div id="overlay" class="overlay hidden"></div>
+  </div>
+
+  <script src="sfx.js"></script>
+  <script src="bridge-engine.js"></script>
+  <script src="bridge-bid.js"></script>
+  <script src="bridge-play.js"></script>
+  <script src="bridge.js"></script>
+</body>
+</html>
