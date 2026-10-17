@@ -89,6 +89,7 @@ button { font: inherit; cursor: pointer; }
   min-width: 72px; height: 42px; padding: 0 16px; border: 0; border-radius: 21px; color: #fff;
   font-size: 17px; font-weight: 700; background: linear-gradient(#4a9be0, #2368b0); box-shadow: 0 3px 0 #174a80;
 }
+a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .btn.primary { background: linear-gradient(#ffb531, #ef8a00); box-shadow: 0 3px 0 #b35f00; }
 .btn.ghost { background: linear-gradient(#8b9aa6, #5f6e7a); box-shadow: 0 3px 0 #3f4a53; }
 .btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .4); }

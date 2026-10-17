@@ -305,14 +305,16 @@
 
   function showStartMenu() {
     showPanel('<h1>斗地主</h1><p>人机对战 · 叫分抢地主</p><div class="stats">' + statsLine() + '</div>' +
-      '<div class="btns"><button class="btn primary" type="button" data-act="start">开始游戏</button></div>' + RULES);
+      '<div class="btns"><button class="btn primary" type="button" data-act="start">开始游戏</button>' +
+      '<a class="btn ghost" href="poker.html">玩德州扑克</a></div>' + RULES);
   }
   function showGameMenu() {
     S.paused = true;
     showPanel('<h2>菜单</h2><div class="stats">' + statsLine() + '</div><div class="btns">' +
       '<button class="btn primary" type="button" data-act="resume">继续游戏</button>' +
       '<button class="btn" type="button" data-act="restart">放弃本局，重新发牌</button>' +
-      '<button class="btn ghost" type="button" data-act="resetScore">清空积分</button></div>' + RULES);
+      '<button class="btn ghost" type="button" data-act="resetScore">清空积分</button>' +
+      '<a class="btn ghost" href="poker.html">玩德州扑克</a></div>' + RULES);
   }
 
   $('overlay').addEventListener('click', (e) => {

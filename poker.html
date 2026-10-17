@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="德州扑克">
+  <title>德州扑克</title>
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="poker.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="tb-side tb-left">
+        <span id="blindInfo">盲注 —</span>
+        <span id="handInfo">第 0 手</span>
+      </div>
+      <a class="tb-link" href="index.html">斗地主</a>
+      <div class="tb-side tb-right">
+        <span id="profit">盈亏 0</span>
+        <button id="menuBtn" type="button" aria-label="菜单">☰</button>
+      </div>
+    </header>
+
+    <main id="table">
+      <div id="felt"></div>
+      <div id="potBox" class="hidden">底池 <b id="potAmt">0</b></div>
+      <div id="board"></div>
+      <div id="banner"></div>
+      <div class="pseat ps1" id="pseat1"></div>
+      <div class="pseat ps2" id="pseat2"></div>
+      <div class="pseat ps3" id="pseat3"></div>
+      <div class="pseat ps4" id="pseat4"></div>
+      <div class="betchip" id="bet1"></div>
+      <div class="betchip" id="bet2"></div>
+      <div class="betchip" id="bet3"></div>
+      <div class="betchip" id="bet4"></div>
+      <div class="betchip" id="bet0"></div>
+      <div id="toast" role="status"></div>
+    </main>
+
+    <footer id="mine">
+      <div id="meRow">
+        <div class="pseat me" id="pseat0"></div>
+        <div id="meInfo"><div id="handLabel"></div><div id="eqLabel"></div></div>
+      </div>
+      <div id="myCards"></div>
+      <div id="raisePanel" class="hidden">
+        <div class="rp-top"><span>加注到</span><b id="raiseAmt">0</b></div>
+        <input id="raiseRange" type="range" min="0" max="100" step="1" value="0">
+        <div class="rp-presets">
+          <button type="button" data-f="min">最小</button>
+          <button type="button" data-f="0.5">½池</button>
+          <button type="button" data-f="0.75">¾池</button>
+          <button type="button" data-f="1">满池</button>
+          <button type="button" data-f="all">全下</button>
+        </div>
+        <button id="raiseOk" class="btn primary" type="button">确认</button>
+      </div>
+      <div id="actions"></div>
+    </footer>
+
+    <div id="overlay" class="overlay hidden"></div>
+  </div>
+
+  <script src="poker-engine.js"></script>
+  <script src="poker.js"></script>
+</body>
+</html>
