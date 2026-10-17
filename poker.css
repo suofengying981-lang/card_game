@@ -24,7 +24,7 @@ button { font: inherit; cursor: pointer; }
 #profit { font-weight: 700; color: #ffe08a; }
 #profit.neg { color: #ff9c9c; }
 .tb-link { color: #cfe9dc; font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .12); }
-#menuBtn { width: 34px; height: 34px; border-radius: 10px; border: 0; color: #fff; font-size: 17px; background: rgba(255, 255, 255, .16); }
+#soundBtn, #menuBtn { width: 34px; height: 34px; border-radius: 10px; border: 0; color: #fff; font-size: 17px; background: rgba(255, 255, 255, .16); }
 
 /* 牌桌 */
 #table { position: relative; flex: 1; min-height: 0; }
@@ -217,3 +217,25 @@ button { font: inherit; cursor: pointer; }
 @media (min-width: 700px) {
   #app { max-width: 520px; left: 50%; right: auto; width: 520px; transform: translateX(-50%); box-shadow: 0 0 40px rgba(0, 0, 0, .5); }
 }
+
+/* 出牌建议 */
+#advice {
+  position: absolute; left: 8px; right: 8px; bottom: 100%; margin-bottom: 4px; z-index: 20;
+  padding: 7px 12px; border-radius: 14px; background: rgba(6, 32, 22, .9); border-left: 5px solid #8fb3a3;
+  font-size: 13px; line-height: 1.4; color: #e8f5ee; box-shadow: 0 3px 12px rgba(0, 0, 0, .4);
+}
+#advice .ad-main { font-weight: 700; font-size: 14px; }
+#advice .ad-sub { color: #bcd6c9; font-size: 12px; }
+#advice.a-fold { border-left-color: #e05555; }
+#advice.a-fold .ad-main b { color: #ff9c9c; }
+#advice.a-check, #advice.a-call { border-left-color: #4aa3e8; }
+#advice.a-check .ad-main b, #advice.a-call .ad-main b { color: #8fcbff; }
+#advice.a-raise { border-left-color: #ffa31a; }
+#advice.a-raise .ad-main b { color: #ffcf6b; }
+#advice.hidden { display: none; }
+.panel .toggles { display: flex; flex-direction: column; gap: 8px; }
+.panel .btn.tg.on { background: linear-gradient(#4dc27d, #2a9a57); box-shadow: 0 3px 0 #1c6e3d; }
+.panel .togglerow { display: flex; gap: 8px; }
+.panel .togglerow .btn { flex: 1; min-width: 0; width: auto; padding: 6px 0; height: auto; line-height: 1.25; font-size: 15px; }
+.panel .togglerow .btn small { font-size: 12px; opacity: .85; }
+.panel .togglerow .btn { flex-direction: column; }

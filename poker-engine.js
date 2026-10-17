@@ -428,8 +428,84 @@
     return { type: 'fold' };
   }
 
+
+  // ---------- 出牌建议（给人类玩家的提示） ----------
+
+  /** Chen 公式：翻牌前起手牌评分 */
+  function chenScore(h) {
+    const hi = Math.max(h[0].r, h[1].r), lo = Math.min(h[0].r, h[1].r);
+    const pts = (r) => (r === 14 ? 10 : r === 13 ? 8 : r === 12 ? 7 : r === 11 ? 6 : r / 2);
+    let sc = pts(hi);
+    if (hi === lo) return Math.max(5, Math.ceil(sc * 2));
+    if (h[0].s === h[1].s) sc += 2;
+    const gap = hi - lo - 1;
+    sc -= gap === 0 ? 0 : gap === 1 ? 1 : gap === 2 ? 2 : gap === 3 ? 4 : 5;
+    if (gap <= 1 && hi < 12) sc += 1;
+    return Math.ceil(sc);
+  }
+  function startingTier(h) {
+    const c = chenScore(h);
+    return c >= 12 ? '顶级起手牌' : c >= 9 ? '强牌' : c >= 7 ? '不错的牌' : c >= 5 ? '可玩的投机牌' : '弱牌，翻牌前多数应弃';
+  }
+
+  /** 统计补牌：翻牌/转牌时，下一张牌能把牌型升级的张数，按升级后的牌型分组 */
+  function countOuts(hole, board) {
+    if (board.length < 3 || board.length > 4) return null;
+    const cur = category(evaluate(hole.concat(board)));
+    if (cur >= 4) return null; // 已经是顺子以上
+    const used = new Set(hole.concat(board).map((c) => c.id));
+    const groups = {};
+    let total = 0;
+    for (const c of ALL) {
+      if (used.has(c.id)) continue;
+      const cat = category(evaluate(hole.concat(board, [c])));
+      if (cat > cur && cat >= 2) { groups[cat] = (groups[cat] || 0) + 1; total++; }
+    }
+    const unseen = 52 - hole.length - board.length;
+    const left = 5 - board.length;
+    let pct;
+    if (left === 2) pct = 1 - ((unseen - total) / unseen) * ((unseen - total - 1) / (unseen - 1));
+    else pct = total / unseen;
+    const list = Object.keys(groups).map((k) => ({ cat: +k, name: CAT_NAMES[k], n: groups[k] })).sort((a, b) => b.n - a.n);
+    return { total, pct, groups: list, cur };
+  }
+
+  /**
+   * 给出建议。opts: {hole, board, nOpp, pot, toCall, raises, street, rnd, iters}
+   * 返回 {eq, eqAdj, need, action, reason, outs, tier}
+   */
+  function advise(o) {
+    const nOpp = Math.max(1, o.nOpp);
+    const eq = equity(o.hole, o.board, nOpp, o.iters || 1200, o.rnd);
+    const fair = 1 / (nOpp + 1);
+    const toCall = o.toCall;
+    const pot = o.pot;
+    let adj = 0;
+    if (toCall > 0) {
+      const before = Math.max(1, pot - toCall);
+      adj = Math.min(0.15, 0.09 * (toCall / before) + 0.03 * Math.min(2, o.raises || 0));
+      if (o.street === 0 && !o.raises) adj *= 0.3;
+    }
+    const eqAdj = eq - adj;
+    const need = toCall > 0 ? toCall / (pot + toCall) : 0;
+    const outs = countOuts(o.hole, o.board);
+    const pc = (x) => Math.round(x * 100) + '%';
+    let action, reason;
+    if (toCall <= 0) {
+      if (eqAdj >= fair + 0.28 * (1 - fair)) { action = 'raise'; reason = '胜率 ' + pc(eq) + '，牌力领先，下注收取价值'; }
+      else { action = 'check'; reason = '胜率 ' + pc(eq) + '，牌力一般，免费看牌'; }
+    } else {
+      const strong = Math.max(need + 0.2, fair + 0.3 * (1 - fair));
+      if (eqAdj >= strong) { action = 'raise'; reason = '有效胜率 ' + pc(eqAdj) + ' 远高于所需 ' + pc(need) + '，可以加注'; }
+      else if (eqAdj >= need) { action = 'call'; reason = '有效胜率 ' + pc(eqAdj) + ' ≥ 所需 ' + pc(need) + '，跟注划算'; }
+      else if (outs && outs.pct >= need - 0.02 && outs.total >= 8) { action = 'call'; reason = '听牌：补牌概率 ' + pc(outs.pct) + ' 接近所需 ' + pc(need) + '，可以跟'; }
+      else { action = 'fold'; reason = '有效胜率 ' + pc(eqAdj) + ' < 所需 ' + pc(need) + '，不划算'; }
+    }
+    return { eq, eqAdj, need, action, reason, outs, tier: o.board.length === 0 ? startingTier(o.hole) : '' };
+  }
+
   return {
     RANK_CH, SUITS, CAT_NAMES, PERSONAS,
-    newDeck, shuffle, evaluate, describe, category, decode, createHand, equity, aiDecide,
+    newDeck, shuffle, evaluate, describe, category, decode, createHand, equity, aiDecide, advise, chenScore, countOuts,
   };
 });

@@ -23,6 +23,7 @@
       <a class="tb-link" href="index.html">斗地主</a>
       <div class="tb-side tb-right">
         <span id="profit">盈亏 0</span>
+        <button id="soundBtn" type="button" aria-label="声音开关">🔊</button>
         <button id="menuBtn" type="button" aria-label="菜单">☰</button>
       </div>
     </header>
@@ -50,6 +51,7 @@
         <div id="meInfo"><div id="handLabel"></div><div id="eqLabel"></div></div>
       </div>
       <div id="myCards"></div>
+      <div id="advice" class="hidden"></div>
       <div id="raisePanel" class="hidden">
         <div class="rp-top"><span>加注到</span><b id="raiseAmt">0</b></div>
         <input id="raiseRange" type="range" min="0" max="100" step="1" value="0">
@@ -68,6 +70,7 @@
     <div id="overlay" class="overlay hidden"></div>
   </div>
 
+  <script src="sfx.js"></script>
   <script src="poker-engine.js"></script>
   <script src="poker.js"></script>
 </body>

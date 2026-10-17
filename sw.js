@@ -1,8 +1,8 @@
 /* 离线缓存：先用缓存秒开，同时后台更新；下次打开即是最新版 */
-const CACHE = 'ddz-v3';
+const CACHE = 'ddz-v4';
 const ASSETS = [
   './', 'index.html', 'style.css', 'engine.js', 'game.js',
-  'poker.html', 'poker.css', 'poker.js', 'poker-engine.js',
+  'poker.html', 'poker.css', 'poker.js', 'poker-engine.js', 'sfx.js',
   'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png',
 ];
 

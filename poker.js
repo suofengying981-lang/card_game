@@ -1,7 +1,8 @@
 /* 德州扑克：界面与对局流程（引擎见 poker-engine.js） */
 (function () {
   'use strict';
-  const { SUITS, RANK_CH, PERSONAS, createHand, aiDecide, equity, evaluate, describe } = window.Poker;
+  const { SUITS, RANK_CH, PERSONAS, createHand, aiDecide, equity, evaluate, describe, advise } = window.Poker;
+  const SFX = window.SFX || { play() {}, unlock() {}, setSfx() {}, setMusic() {} };
 
   const $ = (id) => document.getElementById(id);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -14,7 +15,7 @@
 
   // ---------- 存档 ----------
   const KEY = 'ddz-poker-v1';
-  const save = { stack: START_STACK, buyins: 1, hands: 0, wins: 0, best: 0, stakes: 0, hint: false };
+  const save = { stack: START_STACK, buyins: 1, hands: 0, wins: 0, best: 0, stakes: 0, hint: false, sfx: true, music: false, mute: null };
   try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* ignore */ }
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* ignore */ } };
   const profit = () => save.stack - START_STACK * save.buyins;
@@ -24,7 +25,7 @@
     gen: 0, phase: 'menu', paused: false, fast: false,
     stacks: [START_STACK, START_STACK, START_STACK, START_STACK, START_STACK],
     dealer: -1, handNo: 0, H: null, evIdx: 0, D: null,
-    humanTurn: false, resolve: null, raiseL: null, awards: [], eqCache: '',
+    humanTurn: false, resolve: null, raiseL: null, awards: [], eqCache: '', adv: null,
   };
 
   async function tick(ms) {
@@ -141,6 +142,39 @@
     $('eqLabel').textContent = eq;
   }
 
+  // ---------- 出牌建议 ----------
+  const ACT_NAME = { fold: '弃牌', check: '过牌', call: '跟注', raise: '加注', bet: '下注' };
+  function renderAdvice() {
+    const box = $('advice');
+    const D = G.D;
+    const H = G.H;
+    if (!save.hint || G.phase !== 'playing' || !G.humanTurn || !H || H.done || !D || D.seats[0].folded) {
+      box.classList.add('hidden');
+      return;
+    }
+    const L = H.legal();
+    if (!L) { box.classList.add('hidden'); return; }
+    const hole = H.p[0].hole;
+    const nOpp = D.seats.filter((x, i) => i > 0 && !x.folded && !x.out).length;
+    const k = hole.map((c) => c.id).join(',') + '|' + D.board.length + '|' + L.toCall + '|' + L.pot + '|' + H.raises + '|' + nOpp;
+    if (!G.adv || G.adv.k !== k) {
+      G.adv = { k, v: advise({ hole, board: D.board, nOpp, pot: L.pot, toCall: L.toCall, raises: H.raises, street: H.street, iters: 1200 }) };
+    }
+    const a = G.adv.v;
+    let act = a.action;
+    if (act === 'raise' && !L.canRaise) act = L.canCheck ? 'check' : 'call';
+    const name = act === 'raise' ? (L.currentBet === 0 ? '下注' : '加注') : ACT_NAME[act];
+    let sub = a.tier ? a.tier : '';
+    if (a.outs && a.outs.total) {
+      const g = a.outs.groups.slice(0, 3).map((x) => x.name + ' ' + x.n + ' 张').join('、');
+      const when = D.board.length === 3 ? '到河牌' : '下一张';
+      sub = '补牌：' + g + '（共 ' + a.outs.total + ' 张，' + when + '约 ' + Math.round(a.outs.pct * 100) + '%）';
+    }
+    box.className = 'a-' + act;
+    box.innerHTML = '<div class="ad-main">建议：<b>' + name + '</b>　' + a.reason + '</div>' +
+      '<div class="ad-sub">' + (sub ? sub + ' · ' : '') + '仅供参考，电脑可能诈唬</div>';
+  }
+
   function renderTop() {
     const st = STAKES[save.stakes];
     $('blindInfo').textContent = '盲注 ' + st.sb + '/' + st.bb;
@@ -161,7 +195,7 @@
   function renderAll() {
     if (!G.D) return;
     for (let i = 0; i < 5; i++) renderSeat(i);
-    renderBoard(); renderMe(); renderTop(); renderPot(); renderActions();
+    renderBoard(); renderMe(); renderTop(); renderPot(); renderActions(); renderAdvice();
   }
 
   function toast(msg, ms) {
@@ -224,6 +258,7 @@
     if (L.minTo >= L.maxTo) { submit({ type: 'allin' }); return; }
     const panel = $('raisePanel');
     if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
+    SFX.play('click');
     G.raiseL = L;
     const r = $('raiseRange');
     r.min = L.minTo; r.max = L.maxTo; r.step = 1; r.value = L.minTo;
@@ -241,6 +276,7 @@
     else if (f === 'all') to = L.maxTo;
     else to = L.currentBet + Number(f) * (L.pot + L.fullToCall);
     $('raiseRange').value = Math.max(L.minTo, Math.min(L.maxTo, Math.round(to)));
+    SFX.play('click');
     updateRaise();
   });
   $('raiseOk').addEventListener('click', () => {
@@ -255,6 +291,7 @@
       G.resolve = resolve;
       G.humanTurn = true;
       renderActions();
+      renderAdvice();
     });
   }
   function submit(action) {
@@ -264,6 +301,7 @@
     G.humanTurn = false;
     $('raisePanel').classList.add('hidden');
     renderActions();
+    renderAdvice();
     r(action);
   }
 
@@ -307,9 +345,17 @@
     return '<div class="stakes">盲注' + STAKES.map((s, i) =>
       '<button type="button" data-act="stake' + i + '" class="' + (i === save.stakes ? 'on' : '') + '">' + s.sb + '/' + s.bb + '</button>').join('') + '</div>';
   }
+  function togglesHtml() {
+    const t = (act, label, on) => '<button class="btn ghost tg' + (on ? ' on' : '') + '" type="button" data-act="' + act + '">' + label + '<br><small>' + (on ? '开' : '关') + '</small></button>';
+    return '<div class="togglerow">' + t('hint', '提示', save.hint) + t('sfx', '音效', save.sfx) + t('music', '音乐', save.music) + '</div>';
+  }
+  function refreshMenu() { if (G.phase === 'menu') showStartMenu(); else showGameMenu(); }
+  function updateSoundBtn() { $('soundBtn').textContent = save.sfx || save.music ? '🔊' : '🔇'; }
+  function applySound() { SFX.setSfx(save.sfx); SFX.setMusic(save.music); updateSoundBtn(); }
+
   function showStartMenu() {
     showPanel('<h1>德州扑克</h1><p>无限注 · 你和 4 位电脑牌友</p><div class="stats">' + statsLine() + '</div>' +
-      stakesHtml() +
+      stakesHtml() + '<div class="btns" style="margin-top:0">' + togglesHtml() + '</div>' +
       '<div class="btns"><button class="btn primary" type="button" data-act="start">开始游戏</button>' +
       '<a class="btn ghost" href="index.html">去玩斗地主</a></div>' + RULES);
   }
@@ -317,7 +363,7 @@
     G.paused = true;
     showPanel('<h2>菜单</h2><div class="stats">' + statsLine() + '</div><div class="btns">' +
       '<button class="btn primary" type="button" data-act="resume">继续游戏</button>' +
-      '<button class="btn" type="button" data-act="hint">胜率提示：' + (save.hint ? '开' : '关') + '</button>' +
+      togglesHtml() +
       '<button class="btn ghost" type="button" data-act="reset">清空记录并重置筹码</button>' +
       '<a class="btn ghost" href="index.html">去玩斗地主</a></div>' + RULES);
   }
@@ -328,7 +374,9 @@
     const act = b.dataset.act;
     if (act === 'start') { hideOverlay(); startSession(); }
     else if (act === 'resume') { hideOverlay(); }
-    else if (act === 'hint') { save.hint = !save.hint; persist(); G.eqCache = ''; showGameMenu(); renderMe(); }
+    else if (act === 'hint') { save.hint = !save.hint; persist(); G.eqCache = ''; refreshMenu(); renderMe(); renderAdvice(); }
+    else if (act === 'sfx') { save.sfx = !save.sfx; persist(); applySound(); SFX.play('click'); refreshMenu(); }
+    else if (act === 'music') { save.music = !save.music; persist(); applySound(); refreshMenu(); }
     else if (act === 'reset') {
       Object.assign(save, { stack: START_STACK, buyins: 1, hands: 0, wins: 0, best: 0 });
       persist();
@@ -340,6 +388,19 @@
       showStartMenu();
     }
   });
+  $('soundBtn').addEventListener('click', () => {
+    if (save.sfx || save.music) {
+      save.mute = { music: save.music };
+      save.sfx = false; save.music = false;
+    } else {
+      save.sfx = true; save.music = !!(save.mute && save.mute.music);
+    }
+    persist(); applySound();
+    SFX.play('click');
+    toast(save.sfx || save.music ? '声音已开' : '声音已关');
+  });
+  // 浏览器要求用户操作后才能出声
+  document.addEventListener('pointerdown', () => SFX.unlock(), { passive: true });
   $('menuBtn').addEventListener('click', () => {
     if (G.phase === 'menu') return;
     showGameMenu();
@@ -399,6 +460,7 @@
       renderAll();
       if (seat === 0) {
         if (save.hint) renderMe();
+        SFX.play('turn');
         const a = await humanAct();
         if (G.gen !== gen) return;
         G.D.turn = -1;
@@ -418,8 +480,27 @@
     fold: ['弃牌', 'fold'], check: ['过牌', ''], call: ['跟注', ''], bet: ['下注', 'raise'], raise: ['加注', 'raise'],
   };
 
+  function soundFor(e) {
+    if (G.fast) return;
+    switch (e.t) {
+      case 'deal': SFX.play('deal', 6); break;
+      case 'action':
+        if (e.a === 'fold') SFX.play('fold');
+        else if (e.allin) SFX.play('allin');
+        else if (e.a === 'check') SFX.play('check');
+        else if (e.a === 'call') SFX.play('call');
+        else SFX.play('raise');
+        break;
+      case 'street': SFX.play('flip', e.cards.length); break;
+      case 'showdown': SFX.play('flip', 1); break;
+      case 'award': if (e.kind !== 'refund') SFX.play('award'); break;
+      default: break;
+    }
+  }
+
   function applyEvent(e) {
     const D = G.D;
+    soundFor(e);
     switch (e.t) {
       case 'blind': {
         const s = D.seats[e.seat];
@@ -497,6 +578,7 @@
     G.stacks = H.p.map((x) => x.stack);
     const net = e.net[0];
     save.stack = G.stacks[0];
+    SFX.play(net > 0 ? 'win' : net < 0 ? 'lose' : '');
     save.hands++;
     if (net > 0) { save.wins++; save.best = Math.max(save.best, H.result.pot); }
     persist();
@@ -527,6 +609,7 @@
 
   // ---------- 初始化 ----------
   buildSeats();
+  applySound();
   G.D = newDisplay(G.stacks);
   renderAll();
   showStartMenu();
