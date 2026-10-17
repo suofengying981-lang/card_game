@@ -1,0 +1,62 @@
+name: 构建安卓 APK
+
+# 每次推送到 main 自动构建；也可以在 Actions 页面手动点 Run workflow
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['README.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 用于把 APK 发布到 Releases
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: 安装依赖并同步网页到安卓工程
+        run: |
+          npm ci
+          node scripts/build-www.js
+          npx cap sync android
+
+      - name: 构建已签名的 release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon -Pvc=${{ github.run_number }} -Pvn=1.0.${{ github.run_number }}
+
+      - name: 整理文件名
+        run: cp android/app/build/outputs/apk/release/app-release.apk qipai.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qipai-apk
+          path: qipai.apk
+
+      - name: 发布到 Releases（固定下载地址）
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: 棋牌大厅 安卓版（最新）
+          body: |
+            斗地主 · 德州扑克 · 国标麻将 · 四川麻将，单机离线。
+            构建版本 1.0.${{ github.run_number }}，提交 ${{ github.sha }}。
+            安装：下载 qipai.apk，允许「安装未知应用」后打开即可；之后更新直接覆盖安装，进度会保留。
+          files: qipai.apk
+          make_latest: true

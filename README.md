@@ -1,8 +1,25 @@
-# 纸牌游戏合集：斗地主 + 德州扑克
+# 棋牌大厅：斗地主 · 德州扑克 · 国标麻将 · 四川麻将
 
-手机优先的单机纸牌网页游戏（斗地主 `index.html`、德州扑克 `poker.html`、国标麻将 `mahjong.html`）。斗地主：人机对战，叫分抢地主，支持离线游玩（PWA）。纯前端，无需构建，无第三方依赖。
+手机优先的单机棋牌游戏合集：你对电脑，进度保存在本机浏览器。纯前端网页，同时可打包成安卓 APK。
 
-## 玩法
+| 页面 | 游戏 |
+| --- | --- |
+| `index.html` | 游戏大厅（入口） |
+| `ddz.html` | 斗地主 |
+| `poker.html` | 德州扑克 |
+| `mahjong.html` | 国标麻将（MCR，81 番种，起和 8 番） |
+| `sichuan.html` | 四川麻将（血战到底） |
+
+## 安卓 APK
+
+每次推送到 `main`，GitHub Actions 会自动构建已签名的 APK，并发布到 Releases：
+
+- 下载地址（固定）：`https://github.com/suofengying981-lang/card_game/releases/download/apk-latest/qipai.apk`
+- 手机上下载后允许「安装未知应用」即可安装；之后的新版本直接覆盖安装，游戏进度保留（所有版本使用同一把签名）。
+- 安卓 app 用 Capacitor 把网页打包进 APK，离线可玩。构建配置见 `.github/workflows/android.yml`，安卓工程在 `android/`。
+- 签名密钥 `android/app/qipai.keystore` 为个人自用，随仓库公开；不要用它发布到应用商店。
+
+## 斗地主玩法
 
 - 三人对战，一个地主对两个农民；地主多拿 3 张底牌并先出。
 - 叫分最高者当地主，叫 3 分直接成为地主；无人叫分则重新发牌。
@@ -52,7 +69,7 @@ python3 -m http.server 8000   # 然后访问 http://localhost:8000
 | --- | --- |
 | `engine.js` | 牌型识别、大小比较、出牌枚举、叫分与出牌 AI（纯函数，浏览器与 Node 通用） |
 | `game.js` | 界面渲染、触屏交互、对局流程与结算 |
-| `index.html` / `style.css` | 斗地主页面与样式 |
+| `ddz.html` / `style.css` | 斗地主页面与样式 |
 | `poker-engine.js` | 德州扑克牌力评估、下注引擎（边池/最小加注）、胜率模拟与 AI |
 | `sfx.js` | 音效与背景音乐（Web Audio 合成） |
 | `poker.js` / `poker.html` / `poker.css` | 德州扑克界面、事件回放动画与流程 |

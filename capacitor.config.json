@@ -1,0 +1,8 @@
+{
+  "appId": "com.suo.qipai",
+  "appName": "棋牌大厅",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0b3d2b"
+  }
+}

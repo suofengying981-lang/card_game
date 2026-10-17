@@ -1,7 +1,7 @@
 {
-  "name": "斗地主",
-  "short_name": "斗地主",
-  "description": "人机对战斗地主，叫分抢地主，支持离线游玩",
+  "name": "棋牌大厅",
+  "short_name": "棋牌大厅",
+  "description": "斗地主、德州扑克、国标麻将、四川麻将，单机人机对战，支持离线",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",

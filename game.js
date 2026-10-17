@@ -337,8 +337,7 @@
   function showStartMenu() {
     showPanel('<h1>斗地主</h1><p>人机对战 · 叫分抢地主</p><div class="stats">' + statsLine() + '</div>' + levelSeg() +
       '<div class="btns"><button class="btn primary" type="button" data-act="start">开始游戏</button>' +
-      '<a class="btn ghost" href="poker.html">玩德州扑克</a>' +
-      '<a class="btn ghost" href="mahjong.html">玩国标麻将</a></div>' + RULES);
+      '<a class="btn ghost" href="index.html">返回游戏大厅</a></div>' + RULES);
   }
   function showGameMenu() {
     S.paused = true;
@@ -346,8 +345,7 @@
       '<button class="btn primary" type="button" data-act="resume">继续游戏</button>' +
       '<button class="btn" type="button" data-act="restart">放弃本局，重新发牌</button>' +
       '<button class="btn ghost" type="button" data-act="resetScore">清空积分</button>' +
-      '<a class="btn ghost" href="poker.html">玩德州扑克</a>' +
-      '<a class="btn ghost" href="mahjong.html">玩国标麻将</a></div>' + RULES);
+      '<a class="btn ghost" href="index.html">返回游戏大厅</a></div>' + RULES);
   }
 
   $('overlay').addEventListener('click', (e) => {
@@ -576,7 +574,7 @@
   // 供自动化测试使用
   window.__ddz = { S, toggleCard: (i) => { setSel(i, !S.selected.has(S.hands[0][i].id)); updatePlayBtn(); } };
 
-  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }
 })();

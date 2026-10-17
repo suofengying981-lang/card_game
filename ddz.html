@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5a3a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="斗地主">
+  <title>斗地主</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="tb-side tb-left">
+        <span id="baseInfo">底分 —</span>
+        <span id="multInfo">倍数 ×1</span>
+      </div>
+      <div id="bottomCards" aria-label="底牌"></div>
+      <div class="tb-side tb-right">
+        <span id="totalScore">积分 0</span>
+        <button id="menuBtn" type="button" aria-label="菜单">☰</button>
+      </div>
+    </header>
+
+    <main id="table">
+      <div class="seat left" id="seat2"></div>
+      <div class="seat right" id="seat1"></div>
+      <div class="played pl2" id="played2"></div>
+      <div class="played pl1" id="played1"></div>
+      <div class="played pl0" id="played0"></div>
+      <div id="toast" role="status"></div>
+    </main>
+
+    <footer id="mine">
+      <div id="meBar">
+        <div class="seat me" id="seat0"></div>
+        <div id="actions"></div>
+      </div>
+      <div id="hand"></div>
+    </footer>
+
+    <div id="overlay" class="overlay hidden"></div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
