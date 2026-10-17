@@ -357,7 +357,8 @@
     showPanel('<h1>德州扑克</h1><p>无限注 · 你和 4 位电脑牌友</p><div class="stats">' + statsLine() + '</div>' +
       stakesHtml() + '<div class="btns" style="margin-top:0">' + togglesHtml() + '</div>' +
       '<div class="btns"><button class="btn primary" type="button" data-act="start">开始游戏</button>' +
-      '<a class="btn ghost" href="index.html">去玩斗地主</a></div>' + RULES);
+      '<a class="btn ghost" href="index.html">去玩斗地主</a>' +
+      '<a class="btn ghost" href="mahjong.html">玩国标麻将</a></div>' + RULES);
   }
   function showGameMenu() {
     G.paused = true;
@@ -365,7 +366,8 @@
       '<button class="btn primary" type="button" data-act="resume">继续游戏</button>' +
       togglesHtml() +
       '<button class="btn ghost" type="button" data-act="reset">清空记录并重置筹码</button>' +
-      '<a class="btn ghost" href="index.html">去玩斗地主</a></div>' + RULES);
+      '<a class="btn ghost" href="index.html">去玩斗地主</a>' +
+      '<a class="btn ghost" href="mahjong.html">玩国标麻将</a></div>' + RULES);
   }
 
   $('overlay').addEventListener('click', (e) => {
