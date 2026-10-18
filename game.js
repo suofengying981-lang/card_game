@@ -18,16 +18,27 @@
     try { localStorage.setItem(STORE_KEY, JSON.stringify(stats)); } catch (e) { /* ignore */ }
   }
 
-  // 电脑难度：0 简单（基础启发式）· 1 普通（记牌 + 农民配合）· 2 困难（再加蒙特卡洛推演）
+  // 电脑难度：0 简单（基础启发式）· 1 普通（记牌 + 农民配合）· 2 困难（再加蒙特卡洛推演）· 3 神经网络（自对弈训练的网络，叫牌沿用困难档）
   const LEVEL_KEY = 'ddz-level-v1';
-  const LEVEL_NAMES = ['简单', '普通', '困难'];
+  const LEVEL_NAMES = ['简单', '普通', '困难', '神经网络'];
   let level = 2;
   try {
     const lv = parseInt(localStorage.getItem(LEVEL_KEY), 10);
-    if (lv >= 0 && lv <= 2) level = lv;
+    if (lv >= 0 && lv <= 3) level = lv;
   } catch (e) { /* ignore */ }
+  // 神经网络权重：选到「神经网络」档时才下载（约 4.4 MB），失败则自动退回困难档
+  let nnModel = null, nnLoading = null;
+  function loadNN() {
+    if (nnModel || !window.DDZNN) return Promise.resolve(nnModel);
+    if (!nnLoading) {
+      nnLoading = window.DDZNN.load('ddz_nn.bin').then((m) => { nnModel = m; return m; })
+        .catch(() => { nnLoading = null; return null; });
+    }
+    return nnLoading;
+  }
   function setLevel(v) {
     level = v;
+    if (v === 3) loadNN().then((m) => { if (!m) toast('神经网络权重加载失败，本档暂用「困难」', 2200); });
     try { localStorage.setItem(LEVEL_KEY, String(v)); } catch (e) { /* ignore */ }
   }
 
@@ -354,7 +365,7 @@
     const act = b.dataset.act;
     if (act === 'start' || act === 'restart' || act === 'again') { hideOverlay(); newRound(); }
     else if (act === 'resume' || act === 'review') hideOverlay();
-    else if (/^lv[012]$/.test(act)) {
+    else if (/^lv[0-3]$/.test(act)) {
       setLevel(+act[2]);
       document.querySelectorAll('#levelSeg button').forEach((x) => x.classList.toggle('on', x.dataset.act === act));
     }
@@ -372,12 +383,13 @@
   // ---------- 对局流程 ----------
   async function newRound() {
     const gen = ++S.gen;
+    if (level === 3) loadNN();
     const deck = shuffle(newDeck());
     Object.assign(S, {
       phase: 'bidding', paused: false, landlord: -1, bidMax: 0, bidder: -1, bids: [null, null, null],
       last: null, lastBy: -1, passes: 0, plays: [0, 0, 0], bombs: 0, base: 1,
       selected: new Set(), hintList: null, hintIdx: 0, humanTurn: false, resolve: null,
-      played: new Array(18).fill(0), playedBy: [new Array(18).fill(0), new Array(18).fill(0), new Array(18).fill(0)],
+      played: new Array(18).fill(0), playedBy: [new Array(18).fill(0), new Array(18).fill(0), new Array(18).fill(0)], history: [],
     });
     S.hands = [deck.slice(0, 17), deck.slice(17, 34), deck.slice(34, 51)].map(sortHand);
     S.bottom = deck.slice(51);
@@ -443,6 +455,7 @@
     S.last = { info, cards: sortHand(cards) };
     S.lastBy = p;
     S.passes = 0;
+    S.history.push({ cards });
     S.plays[p]++;
     for (const c of cards) { S.played[c.rank]++; S.playedBy[p][c.rank]++; }
     if (info.type === 'bomb' || info.type === 'rocket') {
@@ -475,9 +488,12 @@
           hand: S.hands[p], last: S.last && S.last.info, lastBy: S.lastBy,
           me: p, landlord: S.landlord, counts: S.hands.map((h) => h.length),
           played: S.played, playedBy: S.playedBy, bottom: S.bottom, passes: S.passes, level,
+          history: S.history, bombs: S.bombs,
         };
         let mv;
-        if (level >= 2) {
+        if (level === 3 && nnModel) {
+          mv = window.DDZNN.pick(nnModel, ctx, window.DDZ);
+        } else if (level >= 2) {
           // 推演在后台分片进行，最长约 0.5 秒，界面不卡
           mv = await drive(mcGen(ctx, Math.random, { ms: 500 }), gen);
           if (S.gen !== gen) return;
@@ -499,6 +515,7 @@
         }
       } else {
         showTag(p, '不要');
+        S.history.push({ cards: null });
         S.passes++;
       }
 

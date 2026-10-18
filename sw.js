@@ -1,7 +1,7 @@
 /* 离线缓存：先用缓存秒开，同时后台更新；下次打开即是最新版 */
-const CACHE = 'ddz-v8';
+const CACHE = 'ddz-v9';
 const ASSETS = [
-  './', 'index.html', 'ddz.html', 'sichuan.html', 'style.css', 'engine.js', 'game.js',
+  './', 'index.html', 'ddz.html', 'nn.js', 'ddz_nn.bin', 'sichuan.html', 'style.css', 'engine.js', 'game.js',
   'mahjong.html', 'poker.html', 'poker.css', 'poker.js', 'poker-engine.js', 'sfx.js',
   'tiaoqi.html', 'tiaoqi-engine.js', 'junqi.html', 'junqi-engine.js', 'guandan.html', 'guandan-engine.js',
   'bridge.html', 'bridge.css', 'bridge.js', 'bridge-engine.js', 'bridge-bid.js', 'bridge-play.js',
