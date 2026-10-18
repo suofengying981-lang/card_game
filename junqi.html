@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#3b2a14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="军旗">
+<title>军旗</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #241a0c; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #fff;
+  user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+button { font: inherit; cursor: pointer; }
+#app { position: fixed; inset: 0; display: flex; flex-direction: column;
+  background: radial-gradient(ellipse at 50% 40%, #5a4220 0%, #3b2a14 60%, #241a0c 100%);
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+#top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 50px;
+  padding: calc(env(safe-area-inset-top) + 6px) 10px 6px; background: rgba(0, 0, 0, .3); font-size: 12px; }
+#top .l { display: flex; flex-direction: column; min-width: 90px; }
+#top a { color: #f0dcb4; text-decoration: none; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .12); font-size: 13px; }
+.ibtn { width: 34px; height: 34px; border-radius: 10px; border: 0; color: #fff; font-size: 16px; background: rgba(255, 255, 255, .16); }
+#status { text-align: center; padding: 5px 10px; font-size: 13px; min-height: 28px; background: rgba(0, 0, 0, .18); line-height: 1.4; }
+#status b { color: #ffd54a; }
+#boardWrap { flex: 1; min-height: 0; display: grid; place-items: center; padding: 2px; }
+svg { width: 100%; height: 100%; max-width: 420px; }
+.tray { display: flex; gap: 4px; flex-wrap: wrap; padding: 3px 10px; min-height: 22px; font-size: 11px; align-items: center; background: rgba(0, 0, 0, .18); }
+.tray span.chip { padding: 1px 5px; border-radius: 5px; font-size: 11px; }
+.chip.me { background: #2b5fb8; } .chip.foe { background: #b0343a; }
+#bar { display: flex; gap: 10px; justify-content: center; padding: 8px 10px calc(env(safe-area-inset-bottom) + 10px); background: rgba(0, 0, 0, .3); }
+#bar button { flex: 1; max-width: 160px; padding: 11px 0; border-radius: 12px; border: 0; color: #fff; font-weight: 700; font-size: 15px; background: rgba(255, 255, 255, .16); }
+#bar button.main { background: #c0392b; }
+#bar button:disabled { opacity: .4; }
+.overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0, 0, 0, .62); }
+.overlay.hidden { display: none; }
+.sheet { width: min(88vw, 360px); max-height: 88vh; overflow: auto; background: #3a2b16; border: 1px solid rgba(255, 255, 255, .2); border-radius: 18px; padding: 18px 16px; }
+.sheet h2 { margin: 0 0 12px; font-size: 18px; text-align: center; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; font-size: 14px; }
+.seg { display: flex; gap: 4px; }
+.seg button { padding: 7px 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 13px; }
+.seg button.on { background: #c0392b; border-color: #c0392b; }
+.sheet .go { width: 100%; margin-top: 8px; padding: 12px; border-radius: 12px; border: 0; background: #c0392b; color: #fff; font-weight: 700; font-size: 16px; }
+.sheet .sub { margin-top: 8px; width: 100%; padding: 10px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; }
+.help { font-size: 12px; line-height: 1.7; color: #e3cfa2; margin-top: 6px; }
+.help b { color: #ffd54a; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="l"><span id="info">军旗</span><span id="rec" style="color:#f0dcb4"></span></div>
+    <a href="index.html">大厅</a>
+    <button class="ibtn" id="menuBtn" type="button" aria-label="菜单">☰</button>
+  </div>
+  <div id="status"></div>
+  <div class="tray" id="trayFoe"></div>
+  <div id="boardWrap"><svg id="svg" viewBox="0 0 340 640"></svg></div>
+  <div class="tray" id="trayMe"></div>
+  <div id="bar">
+    <button id="shufBtn" type="button">随机布阵</button>
+    <button id="goBtn" type="button" class="main">开战</button>
+  </div>
+</div>
+<div id="overlay" class="overlay hidden"><div class="sheet" id="sheet"></div></div>
+
+<script src="junqi-engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const E = JunqiEngine;
+  const KEY = 'junqi-v1';
+  const X0 = 40, DX = 65, Y0 = 32, DY = 52;       // 棋盘格子坐标
+  const NS = 'http://www.w3.org/2000/svg';
+  const $ = (id) => document.getElementById(id);
+  const svg = $('svg');
+
+  let save = { games: 0, wins: 0, level: 1 };
+  try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* ignore */ }
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* ignore */ } };
+
+  let st, phase = 'setup', sel = -1, targets = null, busy = false, myLayout = null, msg = '';
+
+  const pos = (n) => [X0 + E.colOf(n) * DX, Y0 + E.rowOf(n) * DY];
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    (parent || svg).appendChild(e);
+    return e;
+  }
+
+  function startSetup() {
+    phase = 'setup'; sel = -1; targets = null; busy = false; msg = '';
+    myLayout = E.randomSetup(0);
+    st = E.newGame(myLayout);
+    render();
+  }
+
+  function startBattle() {
+    phase = 'play'; sel = -1; targets = null;
+    render();
+  }
+
+  // ---------- 绘制 ----------
+  function drawBoard() {
+    // 公路
+    const drawn = new Set();
+    for (let a = 0; a < E.ROWS * E.COLS; a++) {
+      for (const b of E.ADJ[a]) {
+        const k = a < b ? a + ',' + b : b + ',' + a;
+        if (drawn.has(k)) continue;
+        drawn.add(k);
+        const [x1, y1] = pos(a), [x2, y2] = pos(b);
+        el('line', { x1, y1, x2, y2, stroke: '#6b4f28', 'stroke-width': 1.6 });
+      }
+    }
+    // 铁路（粗线加亮芯）
+    const rd = new Set();
+    for (const a of E.railNodes) {
+      for (const b of E.ADJ[a]) {
+        if (!E.isRailEdge(a, b)) continue;
+        const k = a < b ? a + ',' + b : b + ',' + a;
+        if (rd.has(k)) continue;
+        rd.add(k);
+        const [x1, y1] = pos(a), [x2, y2] = pos(b);
+        el('line', { x1, y1, x2, y2, stroke: '#2a1c0a', 'stroke-width': 7, 'stroke-linecap': 'round' });
+      }
+    }
+    rd.forEach((k) => {
+      const [a, b] = k.split(',').map(Number);
+      const [x1, y1] = pos(a), [x2, y2] = pos(b);
+      el('line', { x1, y1, x2, y2, stroke: '#d8c595', 'stroke-width': 3, 'stroke-dasharray': '6 5' });
+    });
+    // 前线
+    const ry = Y0 + 5.5 * DY;
+    el('text', { x: 170, y: ry + 4, 'text-anchor': 'middle', fill: 'rgba(255,255,255,.45)', 'font-size': 12, 'letter-spacing': 8 }, svg).textContent = '前  线';
+    // 节点
+    for (let n = 0; n < E.ROWS * E.COLS; n++) {
+      const [x, y] = pos(n);
+      if (E.CAMPS.has(n)) {
+        el('circle', { cx: x, cy: y, r: 21, fill: '#7a5d33', stroke: '#2a1c0a', 'stroke-width': 2 });
+        el('text', { x, y: y + 4, 'text-anchor': 'middle', fill: 'rgba(255,255,255,.28)', 'font-size': 10 }).textContent = '行营';
+      } else if (E.HQ[0].includes(n) || E.HQ[1].includes(n)) {
+        el('rect', { x: x - 24, y: y - 17, width: 48, height: 34, rx: 6, fill: '#46341a', stroke: '#e0b857', 'stroke-width': 2 });
+        el('text', { x, y: y + 4, 'text-anchor': 'middle', fill: 'rgba(255,255,255,.3)', 'font-size': 10 }).textContent = '大本营';
+      } else {
+        el('rect', { x: x - 24, y: y - 16, width: 48, height: 32, rx: 6, fill: '#5d4624', stroke: '#2a1c0a', 'stroke-width': 1.5 });
+      }
+    }
+  }
+
+  function drawPieces() {
+    const showAll = st.winner >= 0;
+    for (let n = 0; n < E.ROWS * E.COLS; n++) {
+      const p = st.board[n];
+      const [x, y] = pos(n);
+      if (p) {
+        const mine = p.side === 0;
+        const g = el('g', {});
+        const isSel = n === sel;
+        el('rect', { x: x - 24, y: y - 16, width: 48, height: 32, rx: 6, fill: mine ? '#2f6fe0' : '#d6383f',
+          stroke: isSel ? '#ffe15a' : '#fff', 'stroke-width': isSel ? 3.5 : 1.4 }, g);
+        const reveal = mine || showAll;
+        if (reveal) {
+          const t = el('text', { x, y: y + 5.5, 'text-anchor': 'middle', fill: '#fff', 'font-size': p.t >= 10 ? 14 : 16, 'font-weight': 800,
+            opacity: mine || !showAll ? 1 : .95 }, g);
+          t.textContent = E.NAMES[p.t];
+        } else {
+          el('text', { x, y: y + 6, 'text-anchor': 'middle', fill: 'rgba(255,255,255,.55)', 'font-size': 18 }, g).textContent = '★';
+        }
+      }
+    }
+    // 提示
+    if (targets) {
+      for (const [n, kind] of targets) {
+        const [x, y] = pos(n);
+        if (kind === 'attack') el('rect', { x: x - 26, y: y - 18, width: 52, height: 36, rx: 8, fill: 'rgba(255,60,60,.18)', stroke: '#ff3b3b', 'stroke-width': 3 });
+        else el('circle', { cx: x, cy: y, r: 7, fill: '#7cf0a0', stroke: '#1d6b3c', 'stroke-width': 1.5 });
+      }
+    }
+    // 上一手
+    if (st.last && phase !== 'setup') {
+      const [fx, fy] = pos(st.last.from), [tx, ty] = pos(st.last.to);
+      el('circle', { cx: fx, cy: fy, r: 5, fill: '#ffd54a', opacity: .9 });
+      el('rect', { x: tx - 27, y: ty - 19, width: 54, height: 38, rx: 9, fill: 'none', stroke: '#ffd54a', 'stroke-width': 2, 'stroke-dasharray': '4 3' });
+    }
+    // 点击层
+    for (let n = 0; n < E.ROWS * E.COLS; n++) {
+      const [x, y] = pos(n);
+      const h = el('rect', { x: x - 30, y: y - 24, width: 60, height: 48, fill: 'transparent' });
+      h.dataset.n = n;
+    }
+  }
+
+  function trays() {
+    const chips = (list, cls) => list.slice().sort((a, b) => b - a).map((t) => '<span class="chip ' + cls + '">' + E.NAMES[t] + '</span>').join('');
+    $('trayFoe').innerHTML = '<span style="opacity:.7">已吃掉对方：</span>' + (chips(st.dead[1], 'foe') || '<span style="opacity:.5">无</span>');
+    $('trayMe').innerHTML = '<span style="opacity:.7">我方阵亡：</span>' + (chips(st.dead[0], 'me') || '<span style="opacity:.5">无</span>');
+  }
+
+  function render() {
+    svg.innerHTML = '';
+    drawBoard();
+    drawPieces();
+    trays();
+    $('rec').textContent = '战绩 ' + save.wins + ' 胜 / ' + save.games + ' 局';
+    $('info').textContent = '军旗 · ' + ['简单', '普通', '困难'][save.level];
+    $('shufBtn').style.display = phase === 'setup' ? '' : 'none';
+    $('goBtn').textContent = phase === 'setup' ? '开战' : '认输';
+    $('goBtn').disabled = phase === 'over';
+    let hint = '';
+    if (phase === 'setup') hint = '<b>布阵</b>：点两颗己方棋子可互换位置（军旗只能在大本营，地雷在后两排，炸弹不能在第一排）';
+    else if (phase === 'play') hint = st.turn === 0 ? '<b>你的回合</b>：点己方棋子，再点绿点走子或红框进攻' : '对方思考中…';
+    $('status').innerHTML = phase === 'over' ? msg : (msg ? msg + '<br>' : '') + hint;
+  }
+
+  // ---------- 交互 ----------
+  svg.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-n]');
+    if (!t) return;
+    tap(+t.dataset.n);
+  });
+
+  function tap(n) {
+    if (busy) return;
+    if (phase === 'setup') return tapSetup(n);
+    if (phase !== 'play' || st.turn !== 0) return;
+    if (targets && targets.has(n)) { return doMove({ from: sel, to: n, kind: targets.get(n) }); }
+    const p = st.board[n];
+    if (p && p.side === 0 && p.t < 11) {
+      const tg = E.targetsOf(st, n);
+      if (!tg.size) { sel = -1; targets = null; render(); $('status').innerHTML = '这枚棋子现在没有路可走'; return; }
+      sel = n; targets = tg;
+    } else { sel = -1; targets = null; if (p && p.side === 0) { $('status').innerHTML = '地雷和军旗不能移动'; return; } }
+    render();
+  }
+
+  function tapSetup(n) {
+    const p = st.board[n];
+    if (sel < 0) {
+      if (p && p.side === 0) { sel = n; render(); }
+      return;
+    }
+    if (n === sel) { sel = -1; render(); return; }
+    const a = st.board[sel];
+    const b = st.board[n];
+    if (b && b.side === 0) {
+      if (E.canPlace(a.t, n, 0) && E.canPlace(b.t, sel, 0)) { st.board[sel] = b; st.board[n] = a; sel = -1; }
+      else { $('status').innerHTML = '这样换不符合布阵规则'; return; }
+    } else if (!b && E.sideOfRow(E.rowOf(n)) === 0 && E.canPlace(a.t, n, 0)) {
+      st.board[n] = a; st.board[sel] = null; sel = -1;
+    } else if (b) { sel = -1; }
+    else { $('status').innerHTML = '这个位置不能放这枚棋子'; return; }
+    render();
+  }
+
+  function describe(ev) {
+    const N = E.NAMES;
+    const me = ev.side === 0;
+    switch (ev.kind) {
+      case 'move': return me ? '' : '对方走了一步';
+      case 'flag': return me ? '<b>你扛走了对方的军旗！</b>' : '<b>对方扛走了你的军旗…</b>';
+      case 'win': return me ? '你的' + N[ev.att] + ' 吃掉了对方的' + N[ev.def] : '对方吃掉了你的' + N[ev.def];
+      case 'lose': return me ? '你的' + N[ev.att] + ' 进攻失败阵亡，对方棋子保留' : '对方的' + N[ev.att] + ' 进攻失败，被你的' + N[ev.def] + ' 击毙';
+      default: return me ? '你的' + N[ev.att] + ' 与对方的' + N[ev.def] + ' 同归于尽' : '对方的' + N[ev.att] + ' 与你的' + N[ev.def] + ' 同归于尽';
+    }
+  }
+
+  function doMove(mv) {
+    busy = true; sel = -1; targets = null;
+    const ev = E.apply(st, mv);
+    msg = describe(ev) || '你走了一步';
+    render();
+    busy = false;
+    if (st.winner >= 0) return end();
+    setTimeout(aiTurn, 450);
+  }
+
+  function aiTurn() {
+    if (phase !== 'play' || st.winner >= 0 || st.turn !== 1) return;
+    const mv = E.aiMove(st, 1, save.level);
+    if (!mv) { st.winner = 0; return end(); }
+    const ev = E.apply(st, mv);
+    msg = describe(ev) || '对方走了一步';
+    render();
+    if (st.winner >= 0) end();
+  }
+
+  function end() {
+    phase = 'over';
+    save.games++;
+    const win = st.winner === 0;
+    if (win) save.wins++;
+    persist();
+    msg = st.winner === 2 ? '<b>和棋</b>' : win ? '<b>🎉 你赢了！</b>' + (st.last && st.last.kind === 'flag' ? '' : ' 对方无子可动') : '<b>你输了</b>' + (st.last && st.last.kind === 'flag' ? '' : ' 你已无子可动');
+    render();
+    sheet('<h2>' + (st.winner === 2 ? '和棋' : win ? '🎉 你赢了' : '本局结束') + '</h2><div class="help" style="text-align:center">共 ' + st.moves + ' 步 · 对方棋子已全部亮明</div>' +
+      '<button class="go" id="again">再来一局</button><button class="sub" id="close">看看棋盘</button>');
+    $('again').onclick = () => { hide(); startSetup(); };
+    $('close').onclick = hide;
+  }
+
+  function sheet(html) { $('sheet').innerHTML = html; $('overlay').classList.remove('hidden'); }
+  function hide() { $('overlay').classList.add('hidden'); }
+
+  function menu() {
+    sheet('<h2>军旗</h2>' +
+      '<div class="row"><span>电脑水平</span><div class="seg">' + [['0', '简单'], ['1', '普通'], ['2', '困难']].map((v) =>
+        '<button data-lv="' + v[0] + '" class="' + (+v[0] === save.level ? 'on' : '') + '">' + v[1] + '</button>').join('') + '</div></div>' +
+      '<div class="help"><b>规则</b>（陆战棋）：双方各 25 子，对方的棋子是暗的。<br>' +
+      '大小：司令＞军长＞师长＞旅长＞团长＞营长＞连长＞排长＞工兵。大吃小，同级同归于尽。<br>' +
+      '炸弹碰谁都同归于尽；地雷不能动，只有工兵能排雷，其它子碰雷自己阵亡；军旗被碰到即输。<br>' +
+      '<b>走法</b>：每步走一格（行营里可走斜线）。站在铁路上的棋子可沿铁路直线走任意格，<b>工兵</b>可在铁路上拐弯。前线（中间河）只有三处桥可过。行营里的子不能被吃。<br>' +
+      '扛掉对方军旗，或让对方无子可动，即获胜。</div>' +
+      '<button class="go" id="apply">重新布阵新局</button><button class="sub" id="cl">继续</button>');
+    $('sheet').querySelectorAll('[data-lv]').forEach((b) => { b.onclick = () => { save.level = +b.dataset.lv; persist(); menu(); render(); }; });
+    $('apply').onclick = () => { hide(); startSetup(); };
+    $('cl').onclick = hide;
+  }
+
+  $('menuBtn').onclick = menu;
+  $('shufBtn').onclick = () => { if (phase === 'setup') { startSetup(); } };
+  $('goBtn').onclick = () => {
+    if (phase === 'setup') { startBattle(); return; }
+    if (phase === 'play' && confirm('确定认输吗？')) { st.winner = 1; end(); }
+  };
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+  startSetup();
+})();
+</script>
+</body>
+</html>

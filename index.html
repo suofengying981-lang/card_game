@@ -33,6 +33,9 @@ a.game:active { transform: scale(.97); background: rgba(255, 255, 255, .14); }
 .b3 { background: linear-gradient(#fbf6e6, #e1d7b9); color: #b3261e; }
 .b4 { background: linear-gradient(#fbf6e6, #e1d7b9); color: #1b7a3a; }
 .b5 { background: linear-gradient(#7fb4ff, #2f66c9); color: #fff; }
+.b6 { background: linear-gradient(#ffb067, #d9622b); color: #fff; }
+.b7 { background: linear-gradient(#b79cff, #6a45e0); color: #fff; }
+.b8 { background: linear-gradient(#8fd18f, #3c8f4c); color: #fff; }
 .name { font-size: 19px; font-weight: 800; }
 .desc { font-size: 12px; line-height: 1.5; color: #c4e2d4; }
 .stat { margin-top: auto; font-size: 12px; color: var(--gold); min-height: 16px; }
@@ -65,6 +68,12 @@ a.game:active { transform: scale(.97); background: rgba(255, 255, 255, .14); }
       <span class="desc">合约桥牌：你和电脑搭档，叫牌、打牌、复式计分</span>
       <span class="stat" id="st-bridge"></span>
     </a>
+    <a class="game" href="guandan.html">
+      <span class="badge b6">掼</span>
+      <span class="name">掼蛋</span>
+      <span class="desc">两副牌四人对战，你和对家一伙，红桃级牌百搭，打到 A 通关</span>
+      <span class="stat" id="st-gd"></span>
+    </a>
   </div>
 
   <div class="group">麻将</div>
@@ -80,6 +89,22 @@ a.game:active { transform: scale(.97); background: rgba(255, 255, 255, .14); }
       <span class="name">四川麻将</span>
       <span class="desc">血战到底：定缺、碰杠胡，胡了继续打</span>
       <span class="stat" id="st-sc"></span>
+    </a>
+  </div>
+
+  <div class="group">棋类</div>
+  <div class="grid">
+    <a class="game" href="tiaoqi.html">
+      <span class="badge b7">跳</span>
+      <span class="name">跳棋</span>
+      <span class="desc">六角星棋盘，连跳抢先，2 人或 3 人对局</span>
+      <span class="stat" id="st-tq"></span>
+    </a>
+    <a class="game" href="junqi.html">
+      <span class="badge b8">军</span>
+      <span class="name">军旗</span>
+      <span class="desc">陆战棋：暗子对阵，铁路、行营、地雷与炸弹</span>
+      <span class="stat" id="st-jq"></span>
     </a>
   </div>
 
@@ -104,6 +129,12 @@ a.game:active { transform: scale(.97); background: rgba(255, 255, 255, .14); }
   if (s && s.tot) set('st-sc', '累计 ' + sign(s.tot[0] || 0) + ' · ' + Math.max(0, (s.round || 1) - 1) + ' 局');
   const br = read('bridge-v1');
   if (br && br.boards) set('st-bridge', '累计 ' + sign((br.ns || 0) - (br.ew || 0)) + ' · ' + br.boards + ' 副');
+  const tq = read('tiaoqi-v1');
+  if (tq && tq.games) set('st-tq', tq.wins + ' 胜 / ' + tq.games + ' 局');
+  const jq = read('junqi-v1');
+  if (jq && jq.games) set('st-jq', jq.wins + ' 胜 / ' + jq.games + ' 局');
+  const gd = read('guandan-v1');
+  if (gd && gd.matches) set('st-gd', gd.won + ' 胜 / ' + gd.matches + ' 场');
   set('st-mj', '');
 
   // 在安卓 app 里不再显示下载链接

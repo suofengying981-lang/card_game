@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b3d2b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="掼蛋">
+<title>掼蛋</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #062a1d; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #fff;
+  user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+button { font: inherit; cursor: pointer; }
+#app { position: fixed; inset: 0; display: flex; flex-direction: column;
+  background: radial-gradient(ellipse at 50% 40%, #0f5a3c 0%, #0a3d2b 60%, #062a1d 100%);
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+#top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 50px;
+  padding: calc(env(safe-area-inset-top) + 6px) 10px 6px; background: rgba(0, 0, 0, .3); font-size: 12px; line-height: 1.4; }
+#top .l { display: flex; flex-direction: column; min-width: 120px; }
+#top b { color: #ffd54a; }
+#top a { color: #cfe9dc; text-decoration: none; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .12); font-size: 13px; }
+.ibtn { width: 34px; height: 34px; border-radius: 10px; border: 0; color: #fff; font-size: 16px; background: rgba(255, 255, 255, .16); }
+#status { text-align: center; padding: 4px 10px; font-size: 13px; min-height: 26px; background: rgba(0, 0, 0, .16); color: #e8f6ee; }
+#status b { color: #ffd54a; }
+
+#field { flex: 1; min-height: 0; display: grid; grid-template-columns: 62px 1fr 62px; grid-template-rows: auto 1fr auto; gap: 4px; padding: 4px 6px; }
+.panel { background: rgba(0, 0, 0, .25); border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 3px; align-self: start; }
+.panel.turn { box-shadow: 0 0 0 2px #ffd54a; }
+.panel .n { font-weight: 700; }
+.panel .c { font-size: 20px; font-weight: 800; color: #ffe08a; line-height: 1; }
+.panel .rk { font-size: 11px; color: #7cf0b0; min-height: 14px; }
+.panel.out { opacity: .7; }
+#pN { grid-column: 2; grid-row: 1; justify-self: center; flex-direction: row; gap: 10px; padding: 4px 14px; }
+#pW { grid-column: 1; grid-row: 2; }
+#pE { grid-column: 3; grid-row: 2; }
+#table { grid-column: 2; grid-row: 2; position: relative; min-height: 0; }
+.zone { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: #cfe9dc; }
+#zN { top: 2px; left: 50%; transform: translateX(-50%); }
+#zS { bottom: 2px; left: 50%; transform: translateX(-50%); }
+#zW { left: 0; top: 50%; transform: translateY(-50%); }
+#zE { right: 0; top: 50%; transform: translateY(-50%); }
+.zone .lab { padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, .3); }
+.zone .pass { padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, .12); font-size: 12px; }
+.mini { display: flex; }
+.mini .card { --cw: 22px; margin-left: -12px; }
+.mini .card:first-child { margin-left: 0; }
+
+.card { --cw: 42px; width: var(--cw); height: calc(var(--cw) * 1.4); border-radius: calc(var(--cw) * .13); background: #fbfaf5; color: #1b1b1b;
+  position: relative; flex: 0 0 auto; box-shadow: 0 1px 3px rgba(0, 0, 0, .55); border: 1px solid #c9c4b4; font-weight: 800; overflow: hidden; }
+.card.red { color: #c8281f; }
+.card .r { position: absolute; left: 3px; top: 2px; font-size: calc(var(--cw) * .38); line-height: 1; letter-spacing: -1px; }
+.card .s { position: absolute; left: 3px; top: calc(var(--cw) * .42); font-size: calc(var(--cw) * .36); line-height: 1; }
+.card .big { position: absolute; right: 2px; bottom: 0; font-size: calc(var(--cw) * .7); line-height: 1; opacity: .16; }
+.card.joker .r { writing-mode: vertical-rl; letter-spacing: 1px; font-size: calc(var(--cw) * .3); top: 3px; }
+.card.joker .s { display: none; }
+.card.wild { border: 2px solid #e0a800; background: linear-gradient(#fff6d8, #ffe9a0); }
+.card.wild::after { content: '配'; position: absolute; right: 2px; bottom: 1px; font-size: calc(var(--cw) * .3); color: #b37b00; }
+.card.lvl::after { content: '级'; position: absolute; right: 2px; bottom: 1px; font-size: calc(var(--cw) * .28); color: #2c6bd6; }
+.mini .card.wild::after, .mini .card.lvl::after { display: none; }
+
+#myArea { padding: 2px 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 0; }
+.hrow { display: flex; justify-content: center; height: calc(42px * 1.4 + 12px); align-items: flex-end; }
+.hrow .card { margin-left: -21px; transition: transform .1s; }
+.hrow .card:first-child { margin-left: 0; }
+.hrow .card.sel { transform: translateY(-12px); box-shadow: 0 0 0 2px #ffd54a, 0 2px 6px rgba(0, 0, 0, .6); }
+#bar { display: flex; gap: 8px; justify-content: center; padding: 6px 10px calc(env(safe-area-inset-bottom) + 8px); background: rgba(0, 0, 0, .3); }
+#bar button { flex: 1; max-width: 130px; padding: 11px 0; border-radius: 12px; border: 0; color: #fff; font-weight: 700; font-size: 15px; background: rgba(255, 255, 255, .16); }
+#bar button.main { background: #d9822b; }
+#bar button:disabled { opacity: .4; }
+#toast { position: fixed; left: 50%; bottom: 34%; transform: translateX(-50%); background: rgba(0, 0, 0, .78); padding: 8px 16px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; }
+#toast.on { opacity: 1; }
+
+.overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0, 0, 0, .62); }
+.overlay.hidden { display: none; }
+.sheet { width: min(88vw, 360px); max-height: 88vh; overflow: auto; background: #123f2e; border: 1px solid rgba(255, 255, 255, .2); border-radius: 18px; padding: 18px 16px; }
+.sheet h2 { margin: 0 0 12px; font-size: 18px; text-align: center; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; font-size: 14px; }
+.seg { display: flex; gap: 4px; }
+.seg button { padding: 7px 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 13px; }
+.seg button.on { background: #d9822b; border-color: #d9822b; }
+.sheet .go { width: 100%; margin-top: 8px; padding: 12px; border-radius: 12px; border: 0; background: #d9822b; color: #fff; font-weight: 700; font-size: 16px; }
+.sheet .sub { margin-top: 8px; width: 100%; padding: 10px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; }
+.help { font-size: 12px; line-height: 1.75; color: #cfe9dc; margin-top: 6px; }
+.help b { color: #ffd54a; }
+.rank-list { display: grid; gap: 6px; margin: 6px 0 4px; }
+.rank-list div { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 10px; background: rgba(255, 255, 255, .08); font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="l"><span id="lv1"></span><span id="lv2"></span></div>
+    <a href="index.html">大厅</a>
+    <button class="ibtn" id="menuBtn" type="button" aria-label="菜单">☰</button>
+  </div>
+  <div id="status"></div>
+  <div id="field">
+    <div class="panel" id="pN"></div>
+    <div class="panel" id="pW"></div>
+    <div id="table">
+      <div class="zone" id="zN"></div>
+      <div class="zone" id="zW"></div>
+      <div class="zone" id="zE"></div>
+      <div class="zone" id="zS"></div>
+    </div>
+    <div class="panel" id="pE"></div>
+  </div>
+  <div id="myArea"><div class="hrow" id="row1"></div><div class="hrow" id="row2"></div></div>
+  <div id="bar">
+    <button id="hintBtn" type="button">提示</button>
+    <button id="passBtn" type="button">不出</button>
+    <button id="playBtn" type="button" class="main">出牌</button>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="overlay" class="overlay hidden"><div class="sheet" id="sheet"></div></div>
+
+<script src="guandan-engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const G = GuandanEngine;
+  const KEY = 'guandan-v1';
+  const $ = (id) => document.getElementById(id);
+  const SEAT = ['你', '下家', '对家', '上家'];
+  const LV = (n) => G.RANK_CH[n];
+
+  let save = { matches: 0, won: 0, level: 1, match: null };
+  try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* ignore */ }
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* ignore */ } };
+
+  let match = save.match && save.match.teamLevel ? save.match : G.newMatch();
+  let st = null, selected = new Set(), hintIdx = 0, hintKey = '', token = 0, resultShown = false;
+
+  function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 1500); }
+
+  // ---------- 牌的绘制 ----------
+  function cardEl(c, opts) {
+    const d = document.createElement('div');
+    const r = G.rankOf(c), s = G.suitOf(c);
+    const joker = r >= 16;
+    d.className = 'card' + (joker ? ' joker' : '') + ((s === 1 || (joker && r === 17)) ? ' red' : '');
+    if (st && G.isWild(c, st.L)) d.classList.add('wild');
+    else if (st && r === st.L) d.classList.add('lvl');
+    d.dataset.id = c;
+    d.innerHTML = '<span class="r">' + (joker ? (r === 17 ? '大王' : '小王') : G.RANK_CH[r]) + '</span>' + (joker ? '' : '<span class="s">' + G.SUITS[s] + '</span><span class="big">' + G.SUITS[s] + '</span>');
+    if (opts && opts.sel) d.classList.add('sel');
+    return d;
+  }
+
+  // ---------- 渲染 ----------
+  function render() {
+    const L = st.L;
+    $('lv1').innerHTML = '我方（你+对家）打 <b>' + LV(match.teamLevel[0]) + '</b> · 对方打 <b>' + LV(match.teamLevel[1]) + '</b>';
+    $('lv2').innerHTML = '本局打 <b>' + LV(L) + '</b>（红桃' + LV(L) + ' 是百搭） · 第 ' + match.round + ' 局';
+    // 手牌分两排
+    const hand = st.hands[0];
+    const half = Math.ceil(hand.length / 2);
+    for (const [row, part] of [['row1', hand.slice(0, half)], ['row2', hand.slice(half)]]) {
+      const el = $(row); el.innerHTML = '';
+      part.forEach((c) => el.appendChild(cardEl(c, { sel: selected.has(c) })));
+    }
+    // 其他三家
+    const rk = (p) => { const i = st.finished.indexOf(p); return i < 0 ? '' : ['头游', '二游', '三游', '末游'][i]; };
+    const panel = (id, p, name) => {
+      const e = $(id);
+      e.className = 'panel' + (st.turn === p && !st.over ? ' turn' : '') + (st.hands[p].length ? '' : ' out');
+      e.innerHTML = '<span class="n">' + name + '</span><span class="c">' + st.hands[p].length + '</span><span class="rk">' + rk(p) + '</span>';
+    };
+    panel('pN', 2, '对家'); panel('pW', 3, '上家'); panel('pE', 1, '下家');
+    for (const [z, p] of [['zN', 2], ['zW', 3], ['zE', 1], ['zS', 0]]) {
+      const e = $(z); e.innerHTML = '';
+      const lp = st.lastPlays[p];
+      if (!lp) continue;
+      if (lp.pass) { e.innerHTML = '<span class="pass">不要</span>'; continue; }
+      const m = document.createElement('div'); m.className = 'mini';
+      lp.cards.slice().sort((a, b) => G.ov(G.rankOf(b), L) - G.ov(G.rankOf(a), L)).forEach((c) => m.appendChild(cardEl(c)));
+      e.appendChild(m);
+      const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = G.TYPE_NAME[lp.ins.type]; e.appendChild(lab);
+    }
+    const mine = st.turn === 0 && !st.over;
+    $('playBtn').disabled = !mine; $('hintBtn').disabled = !mine; $('passBtn').disabled = !mine || !st.table;
+    if (st.over) $('status').innerHTML = '本局结束';
+    else if (mine) $('status').innerHTML = st.table ? '<b>轮到你</b>：压过 ' + SEAT[st.table.player] + ' 的' + G.TYPE_NAME[st.table.ins.type] : '<b>轮到你先出</b>';
+    else $('status').textContent = SEAT[st.turn] + ' 出牌中…';
+  }
+
+  // ---------- 流程 ----------
+  function startRound() {
+    token++;
+    st = G.newRound(match);
+    selected = new Set(); hintIdx = 0; hintKey = ''; resultShown = false;
+    render();
+    if (st.tribute) showTribute();
+    save.match = match; persist();
+    loop();
+  }
+
+  function showTribute() {
+    const t = st.tribute;
+    const nm = (p) => SEAT[p];
+    let html;
+    if (t.anti) html = '<div class="help" style="text-align:center">' + t.givers.map(nm).join('、') + ' 手握两张大王，<b>抗贡</b>，本局免进贡。</div>';
+    else html = '<div class="rank-list">' + t.moves.map((m) => '<div><span>' + nm(m.from) + ' 进贡 → ' + nm(m.to) + '</span><b>' + G.cardName(m.card) + '</b></div><div><span>' + nm(m.to) + ' 还贡 → ' + nm(m.from) + '</span><b>' + G.cardName(m.back) + '</b></div>').join('') + '</div>';
+    sheet('<h2>进贡 / 还贡</h2>' + html + '<div class="help">' + (t.anti ? '头游先出牌。' : '进贡的人先出牌。') + '</div><button class="go" id="ok">开始</button>');
+    $('ok').onclick = () => { hide(); render(); loop(); };
+    token++;                                             // 先暂停 AI，点「开始」后再继续
+  }
+
+  function loop() {
+    if (st.over) { if (!resultShown) endRound(); return; }
+    if (st.turn !== 0) {
+      const my = ++token;
+      setTimeout(() => { if (my === token) aiStep(); }, 650);
+    }
+  }
+
+  function aiStep() {
+    if (st.over || st.turn === 0) return;
+    const p = st.turn;
+    let ch = G.aiChoose(st, p, save.level);
+    let r;
+    if (!ch) {
+      r = G.pass(st, p);
+      if (!r.ok) { const pl = G.genPlays(st.hands[p], st.L).filter((x) => !x.best.tier)[0] || G.genPlays(st.hands[p], st.L)[0]; r = G.play(st, p, pl.cards, pl.best); }
+    } else r = G.play(st, p, ch.cards, ch.ins);
+    render();
+    loop();
+  }
+
+  function endRound() {
+    resultShown = true;
+    const res = G.settle(match, st);
+    save.match = match;
+    if (res.gameWon) { save.matches++; if (res.team === 0) save.won++; save.match = null; }
+    persist();
+    render();
+    const names = st.result.order.map((p) => SEAT[p]);
+    const teamName = res.team === 0 ? '我方' : '对方';
+    let body = '<div class="rank-list">' + names.map((n, i) => '<div><span>' + ['头游', '二游', '三游', '末游'][i] + '</span><b>' + n + '</b></div>').join('') + '</div>';
+    let title;
+    if (res.gameWon) {
+      title = res.team === 0 ? '🎉 我方通关！' : '对方通关了';
+      body += '<div class="help" style="text-align:center">' + teamName + ' 在 A 级获胜。战绩：' + save.won + ' 胜 / ' + save.matches + ' 场</div>';
+      sheet('<h2>' + title + '</h2>' + body + '<button class="go" id="next">再来一场</button>');
+      $('next').onclick = () => { hide(); match = G.newMatch(); startRound(); };
+    } else {
+      title = res.team === 0 ? '我方赢下这一局' : '对方赢下这一局';
+      body += '<div class="help" style="text-align:center">' + teamName + ' 升 ' + res.up + ' 级，现在打 <b>' + LV(res.newLevel) + '</b>' + (res.newLevel === 14 && match.teamLevel[res.team] === 14 && res.up < 2 ? '（A 级需要双上或头游加三游才算通关）' : '') + '</div>';
+      sheet('<h2>' + title + '</h2>' + body + '<button class="go" id="next">下一局</button>');
+      $('next').onclick = () => { hide(); startRound(); };
+    }
+  }
+
+  // ---------- 操作 ----------
+  $('row1').addEventListener('click', tapCard);
+  $('row2').addEventListener('click', tapCard);
+  function tapCard(e) {
+    const c = e.target.closest('.card');
+    if (!c || st.over) return;
+    const id = +c.dataset.id;
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    render();
+  }
+
+  $('playBtn').onclick = () => {
+    if (st.turn !== 0 || st.over) return;
+    const cards = [...selected];
+    if (!cards.length) return toast('先选牌');
+    const ins = G.chooseInterp(cards, st.table && st.table.ins, st.L);
+    if (!ins) {
+      return toast(G.interp(cards, st.L).length ? '压不住上家的牌' : '这手牌型不成立');
+    }
+    const r = G.play(st, 0, cards, ins);
+    if (!r.ok) return toast(r.msg);
+    selected = new Set(); hintIdx = 0;
+    render(); loop();
+  };
+
+  $('passBtn').onclick = () => {
+    if (st.turn !== 0 || !st.table) return;
+    G.pass(st, 0); selected = new Set(); render(); loop();
+  };
+
+  $('hintBtn').onclick = () => {
+    if (st.turn !== 0 || st.over) return;
+    const plays = G.genPlays(st.hands[0], st.L);
+    let list;
+    if (st.table) {
+      list = G.followPlays(plays, st.table.ins).sort((a, b) => G.strength(a.ins) - G.strength(b.ins));
+    } else {
+      list = plays.filter((p) => !p.best.tier).sort((a, b) => b.cards.length - a.cards.length || G.strength(a.best) - G.strength(b.best));
+      const ai = G.aiChoose(st, 0, 1);
+      if (ai) list.unshift({ cards: ai.cards, ins: ai.ins });
+    }
+    if (!list.length) { toast('要不起，选择「不出」'); return; }
+    const key = st.plays + ':' + (st.table ? st.table.player : -1);
+    if (key !== hintKey) { hintKey = key; hintIdx = 0; }
+    const pick = list[hintIdx % list.length];
+    hintIdx++;
+    selected = new Set(pick.cards);
+    render();
+  };
+
+  function sheet(html) { $('sheet').innerHTML = html; $('overlay').classList.remove('hidden'); }
+  function hide() { $('overlay').classList.add('hidden'); }
+
+  function menu() {
+    sheet('<h2>掼蛋</h2>' +
+      '<div class="row"><span>电脑水平</span><div class="seg">' + [[0, '简单'], [1, '普通']].map((v) => '<button data-lv="' + v[0] + '" class="' + (v[0] === save.level ? 'on' : '') + '">' + v[1] + '</button>').join('') + '</div></div>' +
+      '<div class="help"><b>玩法</b>：4 人 2 副牌，你和对家（上方）是一家。出完牌的先后决定「头游、二游…」，头游的一方升级，从 2 打到 A。<br>' +
+      '<b>级牌</b>：本局打几，几就是级牌，仅次于大小王；<b>红桃级牌是百搭</b>（可当任何牌，除大小王）。<br>' +
+      '<b>牌型</b>：单张、对子、三张、三带二、顺子（5 张，A 可作 1 或 14）、木板（3 连对）、钢板（2 连三）。<br>' +
+      '<b>炸弹</b>：4 张以上同点数、同花顺（5 张）、天王炸（4 张王）。大小：天王炸＞8 张＞7 张＞6 张＞同花顺＞5 张＞4 张。<br>' +
+      '<b>升级</b>：双上（头游+二游同队）升 3 级；头游+三游升 2 级；头游+末游升 1 级。打 A 时需双上或头游+三游才算通关。<br>' +
+      '<b>进贡</b>：下一局末游把最大的牌（百搭除外）进贡给头游，头游还一张不大于 10 的牌；双上时两家都进贡；对方持两张大王可抗贡。进贡的人先出。<br>' +
+      '操作：点牌选中，再点「出牌」；「提示」可连点切换方案。</div>' +
+      '<button class="go" id="newm">重新开始一场（回到 2）</button><button class="sub" id="cl">继续</button>');
+    $('sheet').querySelectorAll('[data-lv]').forEach((b) => { b.onclick = () => { save.level = +b.dataset.lv; persist(); menu(); }; });
+    $('newm').onclick = () => { if (confirm('放弃当前这场，从 2 重新打？')) { hide(); match = G.newMatch(); startRound(); } };
+    $('cl').onclick = hide;
+  }
+
+  $('menuBtn').onclick = menu;
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+  startRound();
+})();
+</script>
+</body>
+</html>

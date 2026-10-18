@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2a1d4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="跳棋">
+<title>跳棋</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1233; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #fff;
+  user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+button { font: inherit; cursor: pointer; }
+#app { position: fixed; inset: 0; display: flex; flex-direction: column;
+  background: radial-gradient(ellipse at 50% 40%, #3b2a68 0%, #2a1d4a 60%, #1b1233 100%);
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+#top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 50px;
+  padding: calc(env(safe-area-inset-top) + 6px) 10px 6px; background: rgba(0, 0, 0, .28); font-size: 12px; }
+#top .l { display: flex; flex-direction: column; min-width: 90px; }
+#top .r { display: flex; gap: 8px; align-items: center; }
+#top a { color: #d9ccff; text-decoration: none; padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .12); font-size: 13px; }
+.ibtn { width: 34px; height: 34px; border-radius: 10px; border: 0; color: #fff; font-size: 16px; background: rgba(255, 255, 255, .16); }
+#status { text-align: center; padding: 6px 10px; font-size: 14px; min-height: 30px; background: rgba(0, 0, 0, .16); }
+#status b { color: #ffd54a; }
+#boardWrap { flex: 1; min-height: 0; display: grid; place-items: center; padding: 4px; }
+svg { width: 100%; height: 100%; max-width: 640px; }
+.hole { fill: rgba(255, 255, 255, .13); stroke: rgba(255, 255, 255, .22); stroke-width: .6; }
+.tint { stroke: none; }
+.piece { stroke: rgba(0, 0, 0, .45); stroke-width: .8; transition: transform .12s; }
+.sel { stroke: #fff; stroke-width: 2; }
+.dest { fill: rgba(255, 224, 120, .55); stroke: #ffe078; stroke-width: 1.2; }
+.last { stroke: #7cf0b0; stroke-width: 1.6; fill: none; }
+#bar { display: flex; gap: 10px; justify-content: center; padding: 8px 10px calc(env(safe-area-inset-bottom) + 10px); background: rgba(0, 0, 0, .25); }
+#bar button { flex: 1; max-width: 160px; padding: 11px 0; border-radius: 12px; border: 0; color: #fff; font-weight: 700; font-size: 15px; background: rgba(255, 255, 255, .16); }
+#bar button.main { background: #7b5cff; }
+#bar button:disabled { opacity: .4; }
+.overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0, 0, 0, .6); }
+.overlay.hidden { display: none; }
+.sheet { width: min(86vw, 340px); background: #2b2150; border: 1px solid rgba(255, 255, 255, .2); border-radius: 18px; padding: 18px 16px; }
+.sheet h2 { margin: 0 0 12px; font-size: 18px; text-align: center; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; font-size: 14px; }
+.seg { display: flex; gap: 4px; }
+.seg button { padding: 7px 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 13px; }
+.seg button.on { background: #7b5cff; border-color: #7b5cff; }
+.sheet .go { width: 100%; margin-top: 8px; padding: 12px; border-radius: 12px; border: 0; background: #7b5cff; color: #fff; font-weight: 700; font-size: 16px; }
+.sheet .sub { margin-top: 8px; width: 100%; padding: 10px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; }
+.help { font-size: 12px; line-height: 1.7; color: #cfc4f0; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div class="l"><span id="info">跳棋</span><span id="rec" style="color:#d9ccff"></span></div>
+    <a href="index.html">大厅</a>
+    <div class="r"><button class="ibtn" id="menuBtn" type="button" aria-label="菜单">☰</button></div>
+  </div>
+  <div id="status"></div>
+  <div id="boardWrap"><svg id="svg" viewBox="-190 -190 380 380"></svg></div>
+  <div id="bar">
+    <button id="undoBtn" type="button">悔棋</button>
+    <button id="newBtn" type="button" class="main">新局</button>
+  </div>
+</div>
+<div id="overlay" class="overlay hidden"><div class="sheet" id="sheet"></div></div>
+
+<script src="tiaoqi-engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const E = TiaoqiEngine;
+  const KEY = 'tiaoqi-v1';
+  const COLORS = ['#ff5a5f', '#4cc9f0', '#ffd23f'];
+  const NAMES = ['你', '电脑甲', '电脑乙'];
+  const S = 19;                         // 格间距的一半
+  const R = 8.6;                        // 棋子半径
+
+  let save = { games: 0, wins: 0, np: 2, level: 1 };
+  try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* ignore */ }
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* ignore */ } };
+
+  const $ = (id) => document.getElementById(id);
+  const svg = $('svg');
+  let st, history, selected = -1, dests = null, busy = false, lastMove = null, over = false;
+
+  const px = (i) => { const c = E.CELLS[i]; return [S * Math.sqrt(3) * (c.x + c.z / 2), S * 1.5 * c.z]; };
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; };
+
+  function newGame() {
+    st = E.newGame(save.np);
+    history = [];
+    selected = -1; dests = null; busy = false; lastMove = null; over = false;
+    draw();
+    status();
+  }
+
+  function status(msg) {
+    $('rec').textContent = '战绩 ' + save.wins + ' 胜 / ' + save.games + ' 局';
+    $('info').textContent = save.np + ' 人 · ' + ['简单', '普通', '困难'][save.level];
+    if (msg) { $('status').innerHTML = msg; return; }
+    if (st.winner >= 0) return;
+    $('status').innerHTML = st.turn === 0 ? '<b>你的回合</b>：点自己的棋子，再点黄色落点' : NAMES[st.turn] + ' 思考中…';
+  }
+
+  function draw() {
+    svg.innerHTML = '';
+    // 目标三角与出发三角着色
+    st.homes.forEach((h, p) => {
+      E.TIP_CELLS[h].forEach((c) => { const [x, y] = px(c); el('circle', { cx: x, cy: y, r: R + 2, fill: COLORS[p], opacity: .14, class: 'tint' }); });
+      E.TIP_CELLS[E.OPP[h]].forEach((c) => { const [x, y] = px(c); el('circle', { cx: x, cy: y, r: R + 2, fill: COLORS[p], opacity: .07, class: 'tint' }); });
+    });
+    for (let i = 0; i < E.N; i++) {
+      const [x, y] = px(i);
+      const hole = el('circle', { cx: x, cy: y, r: R, class: 'hole' });
+      hole.dataset.i = i;
+    }
+    if (lastMove) {
+      [lastMove.from, lastMove.to].forEach((c) => { const [x, y] = px(c); el('circle', { cx: x, cy: y, r: R + 2.5, class: 'last' }); });
+    }
+    if (dests) {
+      for (const c of dests.keys()) { const [x, y] = px(c); const d = el('circle', { cx: x, cy: y, r: R - 1, class: 'dest' }); d.dataset.i = c; }
+    }
+    for (let i = 0; i < E.N; i++) {
+      const p = st.board[i];
+      if (p < 0) continue;
+      const [x, y] = px(i);
+      const pc = el('circle', { cx: x, cy: y, r: R - 1, fill: COLORS[p], class: 'piece' + (i === selected ? ' sel' : '') });
+      pc.dataset.i = i;
+      el('circle', { cx: x - 2.4, cy: y - 2.6, r: 2.4, fill: 'rgba(255,255,255,.45)' });
+    }
+  }
+
+  function pick(i) {
+    if (busy || st.winner >= 0 || st.turn !== 0) return;
+    if (dests && dests.has(i)) { play({ from: selected, to: i }, dests); return; }
+    if (st.board[i] === 0) {
+      selected = i;
+      dests = E.reach(st.board, i);
+      draw();
+    } else { selected = -1; dests = null; draw(); }
+  }
+
+  svg.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-i]');
+    if (t) pick(+t.dataset.i);
+  });
+
+  function play(mv, par) {
+    const p = st.turn;
+    const path = par ? E.pathTo(par, mv.from, mv.to) : [mv.from, mv.to];
+    history.push({ mv, turn: p });
+    busy = true; selected = -1; dests = null;
+    // 逐格动画
+    let k = 0;
+    const stepAnim = () => {
+      if (k < path.length - 1) {
+        k++;
+        draw();
+        const [x, y] = px(path[k]);
+        el('circle', { cx: x, cy: y, r: R - 1, fill: COLORS[p], class: 'piece' });
+        el('circle', { cx: x - 2.4, cy: y - 2.6, r: 2.4, fill: 'rgba(255,255,255,.45)' });
+        // 动画过程中原位置先隐藏棋子
+        const [fx, fy] = px(mv.from);
+        el('circle', { cx: fx, cy: fy, r: R, class: 'hole', fill: '#2a1d4a' });
+        setTimeout(stepAnim, 110);
+      } else {
+        E.apply(st, mv);
+        lastMove = mv;
+        busy = false;
+        draw();
+        afterMove();
+      }
+    };
+    stepAnim();
+  }
+
+  function afterMove() {
+    if (st.winner >= 0) { finish(); return; }
+    status();
+    if (st.turn !== 0) setTimeout(aiTurn, 260);
+  }
+
+  function aiTurn() {
+    if (st.winner >= 0 || st.turn === 0) return;
+    const p = st.turn;
+    const mv = E.aiMove(st, p, save.level);
+    if (!mv) { st.turn = (st.turn + 1) % st.np; status(); if (st.turn !== 0) setTimeout(aiTurn, 100); return; }
+    const par = E.reach(st.board, mv.from);
+    play(mv, par);
+  }
+
+  function finish() {
+    over = true;
+    save.games++;
+    const win = st.winner === 0;
+    if (win) save.wins++;
+    persist();
+    status(win ? '<b>🎉 你赢了！</b>' : '<b>' + NAMES[st.winner] + '</b> 先把棋子全部走进对面三角');
+    sheet('<h2>' + (win ? '🎉 你赢了' : '本局结束') + '</h2><div class="help" style="text-align:center">共 ' + st.moves + ' 步</div>' +
+      '<button class="go" id="again">再来一局</button><button class="sub" id="close">看看棋盘</button>');
+    $('again').onclick = () => { hide(); newGame(); };
+    $('close').onclick = hide;
+  }
+
+  function undo() {
+    if (busy || !history.length || over) return;
+    // 退回到你上一次走子之前
+    while (history.length) {
+      const h = history.pop();
+      E.undoMove(st, h.mv, h.turn);
+      if (h.turn === 0) break;
+    }
+    selected = -1; dests = null; lastMove = history.length ? history[history.length - 1].mv : null;
+    draw(); status();
+  }
+
+  function sheet(html) { $('sheet').innerHTML = html; $('overlay').classList.remove('hidden'); }
+  function hide() { $('overlay').classList.add('hidden'); }
+
+  function menu() {
+    const seg = (name, vals, cur) => '<div class="seg">' + vals.map((v, i) => '<button data-' + name + '="' + v[0] + '" class="' + (v[0] === cur ? 'on' : '') + '">' + v[1] + '</button>').join('') + '</div>';
+    sheet('<h2>跳棋</h2>' +
+      '<div class="row"><span>人数</span>' + seg('np', [[2, '2 人'], [3, '3 人']], save.np) + '</div>' +
+      '<div class="row"><span>电脑水平</span>' + seg('lv', [[0, '简单'], [1, '普通'], [2, '困难']], save.level) + '</div>' +
+      '<div class="help">走法：每步移动一枚棋子到相邻空位，或隔着一枚棋子（任何一方的）跳到正对面的空位，可以连续跳。先把自己的 10 枚棋子全部走进对面三角形的人获胜。「困难」只在 2 人局里会预判你的回应。</div>' +
+      '<button class="go" id="apply">开始新局</button><button class="sub" id="cl">继续当前局</button>');
+    $('sheet').querySelectorAll('[data-np]').forEach((b) => { b.onclick = () => { save.np = +b.dataset.np; menu(); }; });
+    $('sheet').querySelectorAll('[data-lv]').forEach((b) => { b.onclick = () => { save.level = +b.dataset.lv; menu(); }; });
+    $('apply').onclick = () => { persist(); hide(); newGame(); };
+    $('cl').onclick = () => { persist(); hide(); status(); };
+  }
+
+  $('menuBtn').onclick = menu;
+  $('newBtn').onclick = () => { if (!over && history.length && !confirm('放弃当前局，重新开始？')) return; newGame(); };
+  $('undoBtn').onclick = undo;
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+  newGame();
+})();
+</script>
+</body>
+</html>
