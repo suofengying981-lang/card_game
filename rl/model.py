@@ -32,6 +32,7 @@ class NumpyQ:
         sd = {k: v.detach().cpu().numpy().astype(np.float32) for k, v in state.items()}
         W0 = sd["layers.0.weight"]                     # [H0, XDIM]
         self.Ws, self.Wa = np.ascontiguousarray(W0[:, :SDIM]), np.ascontiguousarray(W0[:, SDIM:].T)
+        self.WsT = np.ascontiguousarray(W0[:, :SDIM].T)
         self.b0 = sd["layers.0.bias"]
         self.rest = []
         i = 1
@@ -46,3 +47,15 @@ class NumpyQ:
         for W, b in self.rest:
             h = np.maximum(h @ W + b, 0)
         return h @ self.wo + self.bo
+
+    def q_batch(self, S, A_list):
+        """批量版：S [K, SDIM] uint8（K 个局面），A_list 为 K 个 [n_k, ADIM] 候选动作；返回 K 个 [n_k] Q 值。
+        把多局的候选拼成一个大矩阵再做矩阵乘，比逐个局面算快得多。"""
+        counts = [len(a) for a in A_list]
+        base = S.astype(np.float32) @ self.WsT + self.b0
+        h = np.concatenate(A_list).astype(np.float32) @ self.Wa + np.repeat(base, counts, axis=0)
+        np.maximum(h, 0, out=h)
+        for W, b in self.rest:
+            h = np.maximum(h @ W + b, 0)
+        q = h @ self.wo + self.bo
+        return np.split(q, np.cumsum(counts)[:-1])

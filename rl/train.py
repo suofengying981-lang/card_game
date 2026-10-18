@@ -5,8 +5,13 @@
 多个 CPU actor 用当前网络自对弈（ε-贪心），把 (状态,动作)→终局胜负 样本送给 GPU 学习器；
 学习器对 3 个座位各训练一个 Q 网络（MSE 回归终局 ±1）。每隔一段时间保存检查点并导出权重。
 """
-import argparse
 import os
+
+# actor 是一进程一核：必须在导入 numpy 之前把 BLAS 线程数限为 1，否则每个进程各开多线程互相抢核，速度掉一半以上
+for _k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+    os.environ.setdefault(_k, "1")
+
+import argparse
 import random
 import time
 
@@ -18,53 +23,75 @@ from env import ADIM, SDIM, XDIM, Game
 from model import NumpyQ, QNet
 
 
-def actor(idx, models_state, queue, stop, eps, seed):
+def actor(idx, models_state, queue, stop, eps, seed, nenv):
+    """每个 actor 同时跑 nenv 局，把各局当前的决策合并成一批做网络推理（比一局一局算快得多）。"""
     torch.set_num_threads(1)
-    os.environ["OMP_NUM_THREADS"] = "1"
     rng = random.Random(seed + idx * 1009)
     nq = [NumpyQ() for _ in range(3)]
     ver = -1
-    g = Game(rng)
+    games = [Game(random.Random(rng.random())) for _ in range(nenv)]
+    recs = [[[], [], []] for _ in range(nenv)]       # 每局每个座位：[(state, action)]
+    pend = [None] * nenv                             # 每局当前待决策：(seat, 状态特征, 候选动作特征, 候选)
+
+    def advance(i):
+        """把第 i 局推进到下一个需要网络决策的时刻；局终返回 True。"""
+        g = games[i]
+        while True:
+            ms = g.legal()
+            if len(ms) == 1:
+                if g.step(ms[0]):
+                    return True
+            else:
+                pend[i] = (g.turn, g.state_features(), np.stack([g.action_features(x) for x in ms]), ms)
+                return False
+
+    def finish(i):
+        g = games[i]
+        out = []
+        for seat in range(3):
+            if not recs[i][seat]:
+                continue
+            y = 1.0 if g.team_won(seat) else -1.0
+            X = np.stack([np.concatenate([s, a]) for s, a in recs[i][seat]])
+            out.append((seat, X, y))
+        try:
+            queue.put((out, g.winner == 0, g.bombs), timeout=5)
+        except Exception:
+            pass
+        g.reset()
+        recs[i] = [[], [], []]
+
+    def settle(i):
+        while advance(i):
+            finish(i)
+
+    for i in range(nenv):
+        games[i].reset()
+        settle(i)
     while not stop.is_set():
         v = models_state["ver"].item()
         if v != ver:
             for s in range(3):
                 nq[s].load(models_state["w"][s])
             ver = v
-        g.reset()
-        recs = [[], [], []]          # 每个座位：[(state, action)]
-        done = False
-        while not done:
-            seat = g.turn
-            ms = g.legal()
-            if len(ms) == 1:
-                m = ms[0]
-            else:
-                s_feat = g.state_features()
-                A = np.stack([g.action_features(x) for x in ms])
-                if rng.random() < eps:
-                    k = rng.randrange(len(ms))
-                else:
-                    k = int(np.argmax(nq[seat].q(s_feat, A)))
-                m = ms[k]
-                recs[seat].append((s_feat, A[k]))
-            done = g.step(m)
-        out = []
         for seat in range(3):
-            if not recs[seat]:
+            idxs = [i for i in range(nenv) if pend[i][0] == seat]
+            if not idxs:
                 continue
-            y = 1.0 if g.team_won(seat) else -1.0
-            X = np.stack([np.concatenate([s, a]) for s, a in recs[seat]])
-            out.append((seat, X, y))
-        try:
-            queue.put((out, g.winner == 0, g.bombs), timeout=5)
-        except Exception:
-            pass
+            qs = nq[seat].q_batch(np.stack([pend[i][1] for i in idxs]), [pend[i][2] for i in idxs])
+            for i, q in zip(idxs, qs):
+                _, sf, A, ms = pend[i]
+                k = rng.randrange(len(ms)) if rng.random() < eps else int(np.argmax(q))
+                recs[i][seat].append((sf, A[k]))
+                if games[i].step(ms[k]):
+                    finish(i)
+                settle(i)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--actors", type=int, default=max(1, (os.cpu_count() or 4) - 2))
+    ap.add_argument("--envs", type=int, default=24, help="每个 actor 同时跑的局数（批量推理）")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--batch", type=int, default=2048)
     ap.add_argument("--lr", type=float, default=2e-4)
@@ -111,7 +138,7 @@ def main():
     ctx = mp.get_context("spawn")
     queue = ctx.Queue(maxsize=args.actors * 4)
     stop = ctx.Event()
-    procs = [ctx.Process(target=actor, args=(i, shared, queue, stop, args.eps, args.seed), daemon=True) for i in range(args.actors)]
+    procs = [ctx.Process(target=actor, args=(i, shared, queue, stop, args.eps, args.seed, args.envs), daemon=True) for i in range(args.actors)]
     for p in procs:
         p.start()
 
@@ -161,8 +188,8 @@ def main():
                 trained += 1
                 for s in range(3):
                     idx = np.random.randint(0, size[s], args.batch)
-                    x = torch.from_numpy(bufX[s][idx]).to(dev, non_blocking=True).float()
-                    y = torch.from_numpy(bufY[s][idx]).to(dev, non_blocking=True)
+                    x = torch.from_numpy(bufX[s][idx]).to(dev).float()
+                    y = torch.from_numpy(bufY[s][idx]).to(dev)
                     pred = models[s](x)
                     loss = torch.mean((pred - y) ** 2)
                     opts[s].zero_grad(set_to_none=True)
