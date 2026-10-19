@@ -42,6 +42,72 @@
     try { localStorage.setItem(LEVEL_KEY, String(v)); } catch (e) { /* ignore */ }
   }
 
+
+  // ---------- 对局记录（可复制/下载，用来让 Claude 评估电脑出牌水平） ----------
+  const LOG_KEY = 'ddz-logs-v1', LOG_MAX = 30;
+  const TYPE_CN = { single: '单张', pair: '对子', triple: '三张', triple1: '三带一', triple2: '三带二', straight: '顺子', pairs: '连对',
+    plane: '飞机', plane1: '飞机带单', plane2: '飞机带对', four2: '四带二', four22: '四带两对', bomb: '炸弹', rocket: '火箭' };
+  const handStr = (cards) => sortHand(cards).map((c) => LABEL[c.rank]).join(' ');
+  const effLevel = () => (level === 3 && nnModel ? '神经网络' : level >= 3 ? '困难' : LEVEL_NAMES[level]);
+  let logs = [];
+  try { const sv = JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); if (Array.isArray(sv)) logs = sv; } catch (e) { /* ignore */ }
+  function saveLogs() {
+    try { localStorage.setItem(LOG_KEY, JSON.stringify(logs.slice(-LOG_MAX))); } catch (e) { /* ignore */ }
+  }
+  function roleOf(lg, p) { return lg.landlord < 0 ? '' : (p === lg.landlord ? '地主' : '农民'); }
+  function logToText(lg, idx) {
+    const seat = (p) => ['我', '右', '左'][p];
+    const who = (p, by) => seat(p) + (lg.landlord >= 0 ? '(' + roleOf(lg, p) + ')' : '') + '[' + by + ']';
+    const L = [];
+    L.push('=== 斗地主对局记录' + (idx ? ' #' + idx : '') + ' ===');
+    L.push('时间 ' + lg.t + ' | 电脑档位 ' + lg.level + ' | 座位：我=玩家（出牌顺序 我→右→左→我），右/左=电脑');
+    L.push('牌面里 小=小王 大=大王，2 是最大的普通牌；每行“手”是出牌前该玩家的手牌');
+    L.push('叫分：' + lg.bids.map((b) => seat(b.p) + (b.v ? '叫' + b.v + '分' : '不叫') + '[' + b.by + ']').join('，') + (lg.landlord >= 0 ? ' → 地主：' + seat(lg.landlord) + ' 底分' + lg.base : ' → 无人叫分'));
+    L.push('开局手牌（17 张）：我 ' + lg.hands0[0] + ' ｜ 右 ' + lg.hands0[1] + ' ｜ 左 ' + lg.hands0[2]);
+    L.push('底牌：' + lg.bottom);
+    L.push('--- 出牌过程（“自由出牌”= 上一轮无人压，需领出）---');
+    lg.plays.forEach((x, i) => {
+      let line = (i + 1) + '. ' + who(x.p, x.by) + ' ' + (x.cards ? '出 ' + TYPE_CN[x.type] + ' ' + x.cards : '不要') + ' ｜' + (x.free ? '自由出牌' : '跟 ' + x.last) + ' ｜手：' + x.hand;
+      if (x.hint) line += ' ｜用了提示';
+      if (x.top) line += ' ｜网络评分：' + x.top;
+      L.push(line);
+    });
+    if (lg.result) {
+      const r = lg.result;
+      L.push('--- 结果 ---');
+      L.push((r.landlordWon ? '地主' : '农民') + '获胜（赢家 ' + seat(r.winner) + '）；炸弹/火箭 ' + r.bombs + ' 个' + (r.spring ? '；春天' : '') + (r.antiSpring ? '；反春天' : '') + '；玩家' + (r.iWon ? '赢' : '输') + ' ' + Math.abs(r.delta) + ' 分');
+      L.push('结束时剩牌：我 ' + (r.left[0] || '-') + ' ｜ 右 ' + (r.left[1] || '-') + ' ｜ 左 ' + (r.left[2] || '-'));
+    } else {
+      L.push('--- 本局未结束 ---');
+    }
+    return L.join('\n');
+  }
+  function allLogsText() {
+    const all = logs.slice();
+    if (S.log && !all.includes(S.log) && S.log.plays.length) all.push(S.log);
+    const head = '以下是斗地主人机对局记录，请从“电脑出牌/叫牌是否合理、是否有明显失误、农民之间是否配合、整体智能水平如何”几方面评估，并指出最值得改进的 3 个问题。\n';
+    return head + '\n' + all.map((lg, i) => logToText(lg, i + 1)).join('\n\n');
+  }
+  function copyText(text) {
+    const fallback = () => {
+      showPanel('<h2>对局记录</h2><p>请长按全选并复制</p><textarea id="logBox" readonly style="width:100%;height:46vh;font-size:12px;border-radius:8px;padding:8px;box-sizing:border-box"></textarea>' +
+        '<div class="btns"><button class="btn primary" type="button" data-act="resume">关闭</button></div>');
+      const ta = $('logBox'); ta.value = text;
+    };
+    try {
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => toast('已复制，可直接粘贴给 Claude', 1800), fallback);
+      else fallback();
+    } catch (e) { fallback(); }
+  }
+  function downloadText(text, name) {
+    try {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+      a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      toast('已下载 ' + name, 1800);
+    } catch (e) { copyText(text); }
+  }
+
   // ---------- 状态 ----------
   const S = {
     gen: 0, phase: 'menu', paused: false,
@@ -278,6 +344,7 @@
       S.hintIdx = 0;
     }
     if (!S.hintList.length) { toast('没有能大过的牌'); return; }
+    S.hintUsed = true;
     const m = S.hintList[S.hintIdx % S.hintList.length];
     S.hintIdx++;
     S.selected = new Set(m.cards.map((c) => c.id));
@@ -355,9 +422,12 @@
     showPanel('<h2>菜单</h2><div class="stats">' + statsLine() + '</div>' + levelSeg() + '<div class="btns">' +
       '<button class="btn primary" type="button" data-act="resume">继续游戏</button>' +
       '<button class="btn" type="button" data-act="restart">放弃本局，重新发牌</button>' +
+      '<button class="btn ghost" type="button" data-act="copyall">复制全部对局记录（' + logCount() + ' 局）</button>' +
+      '<button class="btn ghost" type="button" data-act="dlall">下载对局记录文件</button>' +
       '<button class="btn ghost" type="button" data-act="resetScore">清空积分</button>' +
       '<a class="btn ghost" href="index.html">返回游戏大厅</a></div>' + RULES);
   }
+  function logCount() { return logs.length + (S.log && S.log.plays.length && !logs.includes(S.log) ? 1 : 0); }
 
   $('overlay').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-act]');
@@ -365,6 +435,9 @@
     const act = b.dataset.act;
     if (act === 'start' || act === 'restart' || act === 'again') { hideOverlay(); newRound(); }
     else if (act === 'resume' || act === 'review') hideOverlay();
+    else if (act === 'copylog') copyText('以下是斗地主人机对局记录，请评估电脑的出牌/叫牌水平，指出明显失误和最值得改进的问题。\n\n' + logToText(logs[logs.length - 1], logs.length));
+    else if (act === 'copyall') copyText(allLogsText());
+    else if (act === 'dlall') downloadText(allLogsText(), 'ddz-log-' + new Date().toISOString().slice(0, 10) + '.txt');
     else if (/^lv[0-3]$/.test(act)) {
       setLevel(+act[2]);
       document.querySelectorAll('#levelSeg button').forEach((x) => x.classList.toggle('on', x.dataset.act === act));
@@ -394,6 +467,7 @@
     S.hands = [deck.slice(0, 17), deck.slice(17, 34), deck.slice(34, 51)].map(sortHand);
     S.bottom = deck.slice(51);
     S.turn = Math.floor(Math.random() * 3);
+    S.log = { t: new Date().toLocaleString('zh-CN', { hour12: false }), level: LEVEL_NAMES[level], bids: [], landlord: -1, base: 0, hands0: S.hands.map(handStr), bottom: handStr(S.bottom), plays: [], result: null };
     clearAllPlayed();
     renderAll(true);
     await tick(650);
@@ -421,6 +495,7 @@
         if (S.gen !== gen) return;
       }
       S.bids[p] = v;
+      S.log.bids.push({ p, v, by: p === 0 ? '玩家' : (level >= 1 ? '电脑·模拟叫牌' : '电脑·手牌估值') });
       if (v > S.bidMax) { S.bidMax = v; S.bidder = p; }
       showTag(p, v ? '叫' + v + '分' : '不叫', v ? 'bid' : '');
       renderTop();
@@ -438,6 +513,7 @@
 
     S.landlord = S.bidder;
     S.base = S.bidMax;
+    S.log.landlord = S.landlord; S.log.base = S.base;
     S.hands[S.landlord] = sortHand(S.hands[S.landlord].concat(S.bottom));
     S.phase = 'playing';
     S.turn = S.landlord;
@@ -472,9 +548,9 @@
       const p = S.turn;
       clearPlayed(p);
       renderSeats();
-      let act;
+      let act, by = '玩家', nnInfo = null;
       if (p === 0) {
-        S.hintList = null; S.hintIdx = 0;
+        S.hintList = null; S.hintIdx = 0; S.hintUsed = false;
         if (S.last && !hints(S.hands[0], S.last.info).length) {
           toast('没有能大过的牌', 1000);
           await tick(1100);
@@ -491,8 +567,10 @@
           history: S.history, bombs: S.bombs,
         };
         let mv;
+        nnInfo = {};
+        by = '电脑·' + effLevel();
         if (level === 3 && nnModel) {
-          mv = window.DDZNN.pick(nnModel, ctx, window.DDZ);
+          mv = window.DDZNN.pick(nnModel, ctx, window.DDZ, nnInfo);
         } else if (level >= 2) {
           // 推演在后台分片进行，最长约 0.5 秒，界面不卡
           mv = await drive(mcGen(ctx, Math.random, { ms: 500 }), gen);
@@ -506,6 +584,14 @@
       }
       if (S.gen !== gen) return;
 
+      {
+        const info = act.play ? classify(act.play) : null;
+        const e = { p, by, hand: handStr(S.hands[p]), free: !S.last, last: S.last ? TYPE_CN[S.last.info.type] + ' ' + handStr(S.last.cards) : '',
+          cards: act.play ? handStr(act.play) : null, type: info ? info.type : null };
+        if (p === 0 && S.hintUsed) e.hint = true;
+        if (nnInfo && nnInfo.top) e.top = nnInfo.top.map((x) => (x.m ? TYPE_CN[x.m.type] + ' ' + handStr(x.m.cards) : '不要') + ' ' + x.q.toFixed(2)).join('；') + '（共 ' + nnInfo.n + ' 种出法）';
+        S.log.plays.push(e);
+      }
       if (act.play) {
         applyPlay(p, act.play);
         if (S.hands[p].length === 0) {
@@ -550,6 +636,8 @@
     stats.games += 1;
     if (iWon) stats.wins += 1;
     saveStats();
+    S.log.result = { winner, landlordWon, bombs: S.bombs, spring, antiSpring, iWon, delta: Math.abs(delta), left: S.hands.map((h) => (h.length ? handStr(h) : '')) };
+    logs.push(S.log); saveLogs();
 
     // 亮出对手剩余的牌
     for (let p = 1; p < 3; p++) if (S.hands[p].length) showCards(p, S.hands[p], true);
@@ -567,6 +655,7 @@
       '<div class="delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '+' : '') + delta + '</div>' +
       '<div class="stats">' + statsLine() + '</div>' +
       '<div class="btns"><button class="btn primary" type="button" data-act="again">再来一局</button>' +
+      '<button class="btn ghost" type="button" data-act="copylog">复制本局记录</button>' +
       '<button class="btn ghost" type="button" data-act="review">查看牌桌</button></div>'
     );
   }

@@ -151,7 +151,10 @@
     const q = scoreMoves(model.nets[me], s, moves15);
     let bi = 0;
     for (let i = 1; i < q.length; i++) if (q[i] > q[bi]) bi = i;
-    if (opts && opts.q) opts.q.push(Array.from(q));
+    if (opts) {
+      opts.n = q.length;
+      opts.top = Array.from(q.keys()).sort((a, b) => q[b] - q[a]).slice(0, 3).map((i) => ({ m: list[i], q: q[i] }));
+    }
     return list[bi];
   }
 
