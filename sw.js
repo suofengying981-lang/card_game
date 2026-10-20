@@ -1,5 +1,5 @@
 /* 离线缓存：先用缓存秒开，同时后台更新；下次打开即是最新版 */
-const CACHE = 'ddz-v12';
+const CACHE = 'ddz-v13';
 const ASSETS = [
   './', 'index.html', 'ddz.html', 'nn.js', 'ddz_nn.bin', 'sichuan.html', 'style.css', 'engine.js', 'game.js',
   'mahjong.html', 'poker.html', 'poker.css', 'poker.js', 'poker-engine.js', 'sfx.js',
