@@ -555,6 +555,13 @@
       if (bomb) cands.push(bomb);
       cands.push(null); // 不要
     }
+    // 额外要评估的出法（复盘时把玩家实际出的牌也放进来比较）
+    if (opt.extra) {
+      for (const x of opt.extra) {
+        const dup = cands.some((c) => (c === null && x === null) || (c && x && sameCards(c.cards, x.cards)));
+        if (!dup) cands.push(x);
+      }
+    }
     if (cands.length === 1) return cands[0];
 
     const u = unseenOf(ctx);
@@ -582,6 +589,7 @@
       if (!opt.worlds && now >= deadline && nW >= (opt.minWorlds || 8)) break;
       if (now - sliceStart > 10) { sliceStart = now; yield; }
     }
+    if (opt.out) { opt.out.cands = cands; opt.out.wins = wins.slice(); opt.out.n = nW; }
     // 先验：启发式首选加半场胜利，防止小样本噪声推翻合理的常规出法
     const bonus = opt.prior === undefined ? 0.6 : opt.prior;
     let bi = 0, bs = -Infinity;

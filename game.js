@@ -1,7 +1,7 @@
 /* 斗地主：界面与对局流程 */
 (function () {
   'use strict';
-  const { classify, canBeat, hints, aiPlay, aiBid, mcGen, bidGen, newDeck, shuffle, sortHand, LABEL, SUITS } = window.DDZ;
+  const { classify, canBeat, hints, aiPlay, aiBid, mcGen, bidGen, newDeck, shuffle, sortHand, turnsEstimate, LABEL, SUITS } = window.DDZ;
 
   const $ = (id) => document.getElementById(id);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -353,18 +353,142 @@
     r(action);
   }
 
-  function doHint() {
-    if (!S.hintList) {
-      S.hintList = hints(S.hands[0], S.last && S.last.info, { me: 0, landlord: S.landlord, counts: S.hands.map((h) => h.length) });
-      S.hintIdx = 0;
+  // ---------- 智能建议（蒙特卡洛推演：给出前 3 手的胜率估计与理由）与赛后复盘 ----------
+  const without = (hand, cards) => { const ids = new Set(cards.map((c) => c.id)); return hand.filter((c) => !ids.has(c.id)); };
+  const isBombMove = (m) => m && (m.type === 'bomb' || m.type === 'rocket');
+  const moveText = (m) => (m ? TYPE_CN[m.type] + ' ' + handStr(m.cards) : '不要');
+  const pct = (x) => Math.round(x * 100) + '%';
+  function sameCardSet(a, b) {
+    if (a.length !== b.length) return false;
+    const ids = new Set(a.map((c) => c.id));
+    return b.every((c) => ids.has(c.id));
+  }
+
+  function snapCtx(p) {
+    return {
+      hand: S.hands[p].slice(), last: S.last && S.last.info, lastBy: S.lastBy, me: p, landlord: S.landlord,
+      counts: S.hands.map((h) => h.length), played: S.played.slice(), playedBy: S.playedBy.map((a) => a.slice()),
+      bottom: S.bottom, passes: S.passes, level: 2, history: S.history.slice(), bombs: S.bombs,
+    };
+  }
+
+  /** 推演评估：返回 {list:[{m, rate}] 按胜率降序, n:模拟局数}；唯一/强制的出法返回 null */
+  async function advise(ctx, gen, ms, extra) {
+    const out = {};
+    await drive(mcGen(ctx, Math.random, { ms, out, extra }), gen);
+    if (!out.cands || !out.n) return null;
+    const list = out.cands.map((m, i) => ({ m, rate: out.wins[i] / out.n }));
+    list.sort((a, b) => b.rate - a.rate);
+    return { list, n: out.n };
+  }
+
+  /** 给一手牌写一两句理由（只用公开信息：手牌、场上的牌、各家张数）。gap 为领先第二名的胜率差（可省略） */
+  function explain(m, ctx, gap) {
+    const me = ctx.me, L = ctx.landlord;
+    const mate = me === L ? -1 : [0, 1, 2].find((x) => x !== me && x !== L);
+    const oppMin = Math.min.apply(null, [0, 1, 2].filter((x) => x !== me && x !== mate).map((x) => ctx.counts[x]));
+    const bits = [];
+    if (!m) {
+      bits.push(ctx.last && ctx.lastBy === mate ? '队友在领先，不压，把大牌留给更需要的时候' : '先不压，保留大牌/炸弹等更好的时机');
+    } else {
+      const rest = without(ctx.hand, m.cards);
+      if (!rest.length) return ['出完这手牌就赢了'];
+      if (ctx.last && ctx.lastBy === mate) bits.push('注意：这是压队友的牌，通常不划算');
+      if (isBombMove(m)) bits.push(oppMin <= 3 ? '对手只剩 ' + oppMin + ' 张，用炸弹抢回控制权' : '炸弹要留到关键时刻，现在用要谨慎');
+      else if (ctx.last && oppMin <= 2) bits.push('对手只剩 ' + oppMin + ' 张，必须压住他');
+      else if (!ctx.last && m.type === 'single' && m.main <= 8) bits.push('先打出小单张，保留大牌控场');
+      else if (!ctx.last && m.n >= 5) bits.push('一次出多张，减少剩余手数');
+      if (m.cards.some((c) => c.rank >= 15) && !isBombMove(m)) bits.push('消耗了大牌，后面控场更难');
+      bits.push('出完后剩 ' + rest.length + ' 张，约 ' + turnsEstimate(rest) + ' 手可走完');
     }
-    if (!S.hintList.length) { toast('没有能大过的牌'); return; }
+    if (gap !== undefined && gap >= 0.06) bits.push('比第二选择高约 ' + Math.round(gap * 100) + ' 个百分点');
+    return bits.slice(0, 3);
+  }
+
+  function showAdvice(html) {
+    const el = $('advice');
+    if (!el) return;
+    el.innerHTML = html || '';
+    el.classList.toggle('hidden', !html);
+  }
+
+  async function doHint() {
+    if (S.hinting) return;
     S.hintUsed = true;
-    const m = S.hintList[S.hintIdx % S.hintList.length];
-    S.hintIdx++;
-    S.selected = new Set(m.cards.map((c) => c.id));
-    renderHand();
-    updatePlayBtn();
+    const key = S.history.length + ':' + S.lastBy;
+    if (!S.smart || S.smart.key !== key) {
+      S.hinting = true;
+      toast('正在帮你推演…', 1500);
+      const gen = S.gen;
+      const ctx = snapCtx(0);
+      let res = null;
+      try { res = await advise(ctx, gen, 900); } catch (e) { res = null; }
+      S.hinting = false;
+      if (S.gen !== gen || !S.humanTurn) return;
+      if (res && res.list.length) {
+        S.smart = { key, ctx, res, idx: 0, top: res.list.slice(0, 3) };
+      } else {
+        // 强制出牌/只有一种选择：退回基础提示
+        S.smart = null;
+        if (!S.hintList) { S.hintList = hints(S.hands[0], S.last && S.last.info, { me: 0, landlord: S.landlord, counts: S.hands.map((h) => h.length) }); S.hintIdx = 0; }
+        if (!S.hintList.length) { toast('没有能大过的牌'); return; }
+        const m = S.hintList[S.hintIdx % S.hintList.length]; S.hintIdx++;
+        S.selected = new Set(m.cards.map((c) => c.id));
+        renderHand(); updatePlayBtn();
+        showAdvice('<b>只有这类选择</b>：' + moveText(m));
+        return;
+      }
+    }
+    const sm = S.smart;
+    const rank = sm.idx % sm.top.length;
+    const e = sm.top[rank];
+    sm.idx++;
+    S.selected = new Set(e.m ? e.m.cards.map((c) => c.id) : []);
+    renderHand(); updatePlayBtn();
+    const gap = rank === 0 && sm.res.list.length > 1 ? e.rate - sm.res.list[1].rate : undefined;
+    const reasons = explain(e.m, sm.ctx, gap);
+    const others = sm.top.filter((x) => x !== e).map((x) => moveText(x.m) + ' ' + pct(x.rate)).join(' · ');
+    showAdvice('<b>建议' + ['①', '②', '③'][rank] + '：' + moveText(e.m) + '</b> · 估计胜率 ' + pct(e.rate) +
+      '<br>' + reasons.join('；') + (others ? '<br><span class="dim">其他：' + others + '（再点「提示」看下一个）</span>' : ''));
+  }
+
+  // 赛后复盘：用同样的推演重新评估你每一手，找出与最佳差距最大的几步
+  async function runRecap() {
+    const gen = S.gen;
+    const ds = S.decisions.filter((d) => d.ctx.hand.length > 0);
+    showPanel('<h2>赛后复盘</h2><p id="recapProg">正在分析你的每一步… 0 / ' + ds.length + '</p>');
+    const rows = [];
+    let same = 0, judged = 0;
+    for (let i = 0; i < ds.length; i++) {
+      const d = ds[i];
+      const chosen = d.cards ? Object.assign({ cards: d.cards }, classify(d.cards)) : null;
+      let res = null;
+      try { res = await advise(d.ctx, gen, 350, [chosen]); } catch (e) { res = null; }
+      if (S.gen !== gen) return;
+      const pg = $('recapProg');
+      if (pg) pg.textContent = '正在分析你的每一步… ' + (i + 1) + ' / ' + ds.length;
+      if (!res || res.n < 40) continue;
+      const mine = res.list.find((x) => (x.m === null && chosen === null) || (x.m && chosen && sameCardSet(x.m.cards, chosen.cards)));
+      if (!mine) continue;
+      judged++;
+      const best = res.list[0];
+      if (best === mine || best.rate - mine.rate < 0.02) { same++; continue; }
+      rows.push({ i: d.k, loss: best.rate - mine.rate, mine, best, ctx: d.ctx });
+    }
+    rows.sort((a, b) => b.loss - a.loss);
+    const bad = rows.filter((r) => r.loss >= 0.08).slice(0, 3);
+    let html = '<h2>赛后复盘</h2><p>分析了你的 ' + judged + ' 步，其中 ' + same + ' 步与推荐基本一致。</p>';
+    if (!bad.length) html += '<p class="win">没有发现明显失误，这局你打得不错。</p>';
+    else {
+      html += '<p>差距最大的 ' + bad.length + ' 步（胜率为推演估计，约 ±3% 误差）：</p><ul class="recap">';
+      for (const r of bad) {
+        html += '<li><b>你的第 ' + r.i + ' 步</b>：你出「' + moveText(r.mine.m) + '」（' + pct(r.mine.rate) + '），推荐「' + moveText(r.best.m) +
+          '」（' + pct(r.best.rate) + '），差 ' + Math.round(r.loss * 100) + ' 个百分点。<br><span class="dim">' + explain(r.best.m, r.ctx).join('；') + '</span></li>';
+      }
+      html += '</ul>';
+    }
+    html += '<div class="btns"><button class="btn primary" type="button" data-act="again">再来一局</button><button class="btn ghost" type="button" data-act="review">查看牌桌</button></div>';
+    showPanel(html);
   }
 
   function doPlay() {
@@ -450,6 +574,7 @@
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'start' || act === 'restart' || act === 'again') { hideOverlay(); newRound(); }
+    else if (act === 'recap') runRecap();
     else if (act === 'resume' || act === 'review') hideOverlay();
     else if (act === 'copylog') copyText('以下是斗地主人机对局记录，请评估电脑的出牌/叫牌水平，指出明显失误和最值得改进的问题。\n\n' + logToText(logs[logs.length - 1], logs.length));
     else if (act === 'copyall') copyText(allLogsText());
@@ -479,6 +604,7 @@
       last: null, lastBy: -1, passes: 0, plays: [0, 0, 0], bombs: 0, base: 1,
       selected: new Set(), hintList: null, hintIdx: 0, humanTurn: false, resolve: null,
       played: new Array(18).fill(0), playedBy: [new Array(18).fill(0), new Array(18).fill(0), new Array(18).fill(0)], history: [],
+      decisions: [], pending: null, smart: null, hinting: false,
     });
     S.hands = [deck.slice(0, 17), deck.slice(17, 34), deck.slice(34, 51)].map(sortHand);
     S.bottom = deck.slice(51);
@@ -566,13 +692,18 @@
       renderSeats();
       let act, by = '玩家', nnInfo = null;
       if (p === 0) {
-        S.hintList = null; S.hintIdx = 0; S.hintUsed = false;
+        S.hintList = null; S.hintIdx = 0; S.hintUsed = false; S.smart = null; showAdvice('');
+        S.pending = snapCtx(0);
         if (S.last && !hints(S.hands[0], S.last.info).length) {
           toast('没有能大过的牌', 1000);
           await tick(1100);
           act = { pass: true };
         } else {
           act = await humanAct();
+        }
+        if (S.pending && S.gen === gen) {
+          S.decisions.push({ ctx: S.pending, cards: act.play || null, hint: !!S.hintUsed, k: S.decisions.length + 1 });
+          S.pending = null; showAdvice('');
         }
       } else {
         const t0 = Date.now();
@@ -671,6 +802,7 @@
       '<div class="delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '+' : '') + delta + '</div>' +
       '<div class="stats">' + statsLine() + '</div>' +
       '<div class="btns"><button class="btn primary" type="button" data-act="again">再来一局</button>' +
+      '<button class="btn" type="button" data-act="recap">赛后复盘</button>' +
       '<button class="btn ghost" type="button" data-act="copylog">复制本局记录</button>' +
       '<button class="btn ghost" type="button" data-act="review">查看牌桌</button></div>'
     );
@@ -694,7 +826,7 @@
   window.addEventListener('resize', () => renderHand());
 
   // 供自动化测试使用
-  window.__ddz = { S, toggleCard: (i) => { setSel(i, !S.selected.has(S.hands[0][i].id)); updatePlayBtn(); } };
+  window.__ddz = { S, runRecap, toggleCard: (i) => { setSel(i, !S.selected.has(S.hands[0][i].id)); updatePlayBtn(); } };
 
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
