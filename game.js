@@ -100,6 +100,18 @@
     } catch (e) { fallback(); }
   }
   function downloadText(text, name) {
+    // 安卓 APK（WebView）里 blob 下载不会真正保存文件：改用系统分享（可存到文件/发给微信等），不行再退回复制
+    if (window.Capacitor) {
+      try {
+        const f = new File([text], name, { type: 'text/plain' });
+        if (navigator.canShare && navigator.canShare({ files: [f] })) {
+          navigator.share({ files: [f], title: name }).catch(() => copyText(text));
+          return;
+        }
+      } catch (e) { /* 退回复制 */ }
+      copyText(text);
+      return;
+    }
     try {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
@@ -257,6 +269,7 @@
     } else if (S.phase === 'playing' && S.humanTurn) {
       add('不要', 'ghost', 'pass', !S.last);
       add('提示', '', 'hint');
+      add('退回', 'ghost', 'unselect', !S.selected.size);
       add('出牌', 'primary', 'play', true);
       updatePlayBtn();
     } else if (S.phase === 'over' && $('overlay').classList.contains('hidden')) {
@@ -272,6 +285,8 @@
     if (!btn) return;
     const info = classify(selectedCards());
     btn.disabled = !(info && canBeat(info, S.last && S.last.info));
+    const back = $('actions').querySelector('[data-act="unselect"]');
+    if (back) back.disabled = !S.selected.size;
   }
 
   function setSel(i, on) {
@@ -367,6 +382,7 @@
     if (act.startsWith('bid')) submit({ bid: Number(act.slice(3)) });
     else if (act === 'pass') submit({ pass: true });
     else if (act === 'hint') doHint();
+    else if (act === 'unselect') { S.selected.clear(); S.hintList = null; S.hintIdx = 0; renderHand(); updatePlayBtn(); }
     else if (act === 'play') doPlay();
     else if (act === 'again') newRound();
   });

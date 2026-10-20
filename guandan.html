@@ -116,6 +116,7 @@ button { font: inherit; cursor: pointer; }
   <div id="bar">
     <button id="hintBtn" type="button">提示</button>
     <button id="passBtn" type="button">不出</button>
+    <button id="clearBtn" type="button">退回</button>
     <button id="playBtn" type="button" class="main">出牌</button>
   </div>
 </div>
@@ -186,7 +187,7 @@ button { font: inherit; cursor: pointer; }
       const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = G.TYPE_NAME[lp.ins.type]; e.appendChild(lab);
     }
     const mine = st.turn === 0 && !st.over;
-    $('playBtn').disabled = !mine; $('hintBtn').disabled = !mine; $('passBtn').disabled = !mine || !st.table;
+    $('playBtn').disabled = !mine; $('hintBtn').disabled = !mine; $('clearBtn').disabled = !selected.size; $('passBtn').disabled = !mine || !st.table;
     if (st.over) $('status').innerHTML = '本局结束';
     else if (mine) $('status').innerHTML = st.table ? '<b>轮到你</b>：压过 ' + SEAT[st.table.player] + ' 的' + G.TYPE_NAME[st.table.ins.type] : '<b>轮到你先出</b>';
     else $('status').textContent = SEAT[st.turn] + ' 出牌中…';
@@ -283,6 +284,8 @@ button { font: inherit; cursor: pointer; }
     selected = new Set(); hintIdx = 0;
     render(); loop();
   };
+
+  $('clearBtn').onclick = () => { selected = new Set(); render(); };
 
   $('passBtn').onclick = () => {
     if (st.turn !== 0 || !st.table) return;
