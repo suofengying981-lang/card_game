@@ -5,7 +5,7 @@ const root = path.join(__dirname, '..');
 const out = path.join(root, 'www');
 const files = [
   'index.html', 'ddz.html', 'poker.html', 'mahjong.html', 'sichuan.html', 'bridge.html',
-  'tiaoqi.html', 'tiaoqi-engine.js', 'junqi.html', 'junqi-engine.js', 'guandan.html', 'guandan-engine.js',
+  'tiaoqi.html', 'tiaoqi-engine.js', 'junqi.html', 'junqi-engine.js', 'guandan.html', 'guandan-engine.js', 'guandan-ai.js',
   'style.css', 'poker.css', 'bridge.css', 'bridge-engine.js', 'bridge-bid.js', 'bridge-play.js', 'bridge.js', 'engine.js', 'game.js', 'nn.js', 'ddz_nn.bin', 'poker-engine.js', 'poker.js', 'sfx.js',
   'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png',
 ];

@@ -83,12 +83,17 @@ button { font: inherit; cursor: pointer; }
 .sheet h2 { margin: 0 0 12px; font-size: 18px; text-align: center; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; font-size: 14px; }
 .seg { display: flex; gap: 4px; }
-.seg button { padding: 7px 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 13px; }
+.seg button { padding: 7px 9px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 13px; }
 .seg button.on { background: #d9822b; border-color: #d9822b; }
 .sheet .go { width: 100%; margin-top: 8px; padding: 12px; border-radius: 12px; border: 0; background: #d9822b; color: #fff; font-weight: 700; font-size: 16px; }
 .sheet .sub { margin-top: 8px; width: 100%; padding: 10px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; }
 .help { font-size: 12px; line-height: 1.75; color: #cfe9dc; margin-top: 6px; }
 .help b { color: #ffd54a; }
+.cnt-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 6px 0; }
+.cnt-grid div { text-align: center; padding: 6px 0; border-radius: 10px; background: rgba(255, 255, 255, .08); font-size: 13px; line-height: 1.35; }
+.cnt-grid b { display: block; font-size: 20px; color: #ffe08a; }
+.cnt-grid .z b { color: #6f8a7d; }
+.cnt-grid .h b { color: #ff9c6e; }
 .rank-list { display: grid; gap: 6px; margin: 6px 0 4px; }
 .rank-list div { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 10px; background: rgba(255, 255, 255, .08); font-size: 14px; }
 </style>
@@ -98,7 +103,7 @@ button { font: inherit; cursor: pointer; }
   <div id="top">
     <div class="l"><span id="lv1"></span><span id="lv2"></span></div>
     <a href="index.html">大厅</a>
-    <button class="ibtn" id="menuBtn" type="button" aria-label="菜单">☰</button>
+    <div style="display:flex;gap:6px"><button class="ibtn" id="cntBtn" type="button" aria-label="记牌器" style="font-size:13px">记牌</button><button class="ibtn" id="menuBtn" type="button" aria-label="菜单">☰</button></div>
   </div>
   <div id="status"></div>
   <div id="field">
@@ -124,10 +129,13 @@ button { font: inherit; cursor: pointer; }
 <div id="overlay" class="overlay hidden"><div class="sheet" id="sheet"></div></div>
 
 <script src="guandan-engine.js"></script>
+<script src="guandan-ai.js"></script>
 <script>
 (function () {
   'use strict';
   const G = GuandanEngine;
+  const AI = window.GuandanAI;
+  const LEVELS = [[0, '简单'], [1, '普通'], [2, '困难'], [3, '专家']];
   const KEY = 'guandan-v1';
   const $ = (id) => document.getElementById(id);
   const SEAT = ['你', '下家', '对家', '上家'];
@@ -138,7 +146,7 @@ button { font: inherit; cursor: pointer; }
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* ignore */ } };
 
   let match = save.match && save.match.teamLevel ? save.match : G.newMatch();
-  let st = null, selected = new Set(), hintIdx = 0, hintKey = '', token = 0, resultShown = false;
+  let st = null, selected = new Set(), hintIdx = 0, hintKey = '', token = 0, resultShown = false, hintMsg = '', hintList = null;
 
   function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 1500); }
 
@@ -189,15 +197,16 @@ button { font: inherit; cursor: pointer; }
     const mine = st.turn === 0 && !st.over;
     $('playBtn').disabled = !mine; $('hintBtn').disabled = !mine; $('clearBtn').disabled = !selected.size; $('passBtn').disabled = !mine || !st.table;
     if (st.over) $('status').innerHTML = '本局结束';
+    else if (mine && hintMsg) $('status').innerHTML = hintMsg;
     else if (mine) $('status').innerHTML = st.table ? '<b>轮到你</b>：压过 ' + SEAT[st.table.player] + ' 的' + G.TYPE_NAME[st.table.ins.type] : '<b>轮到你先出</b>';
-    else $('status').textContent = SEAT[st.turn] + ' 出牌中…';
+    else $('status').textContent = SEAT[st.turn] + (save.level >= 3 ? ' 思考中…' : ' 出牌中…');
   }
 
   // ---------- 流程 ----------
   function startRound() {
     token++;
     st = G.newRound(match);
-    selected = new Set(); hintIdx = 0; hintKey = ''; resultShown = false;
+    selected = new Set(); hintIdx = 0; hintKey = ''; resultShown = false; hintMsg = ''; hintList = null;
     render();
     if (st.tribute) showTribute();
     save.match = match; persist();
@@ -219,14 +228,15 @@ button { font: inherit; cursor: pointer; }
     if (st.over) { if (!resultShown) endRound(); return; }
     if (st.turn !== 0) {
       const my = ++token;
-      setTimeout(() => { if (my === token) aiStep(); }, 650);
+      setTimeout(() => { if (my === token) aiStep(); }, save.level >= 3 ? 400 : 650);
     }
   }
 
   function aiStep() {
     if (st.over || st.turn === 0) return;
     const p = st.turn;
-    let ch = G.aiChoose(st, p, save.level);
+    let ch;
+    try { ch = AI.aiMove(st, p, save.level); } catch (e) { ch = G.aiChoose(st, p, Math.min(1, save.level)); }
     let r;
     if (!ch) {
       r = G.pass(st, p);
@@ -281,7 +291,7 @@ button { font: inherit; cursor: pointer; }
     }
     const r = G.play(st, 0, cards, ins);
     if (!r.ok) return toast(r.msg);
-    selected = new Set(); hintIdx = 0;
+    selected = new Set(); hintIdx = 0; hintMsg = ''; hintList = null;
     render(); loop();
   };
 
@@ -289,26 +299,38 @@ button { font: inherit; cursor: pointer; }
 
   $('passBtn').onclick = () => {
     if (st.turn !== 0 || !st.table) return;
-    G.pass(st, 0); selected = new Set(); render(); loop();
+    G.pass(st, 0); selected = new Set(); hintMsg = ''; hintList = null; render(); loop();
   };
 
   $('hintBtn').onclick = () => {
     if (st.turn !== 0 || st.over) return;
-    const plays = G.genPlays(st.hands[0], st.L);
-    let list;
-    if (st.table) {
-      list = G.followPlays(plays, st.table.ins).sort((a, b) => G.strength(a.ins) - G.strength(b.ins));
-    } else {
-      list = plays.filter((p) => !p.best.tier).sort((a, b) => b.cards.length - a.cards.length || G.strength(a.best) - G.strength(b.best));
-      const ai = G.aiChoose(st, 0, 1);
-      if (ai) list.unshift({ cards: ai.cards, ins: ai.ins });
-    }
-    if (!list.length) { toast('要不起，选择「不出」'); return; }
     const key = st.plays + ':' + (st.table ? st.table.player : -1);
-    if (key !== hintKey) { hintKey = key; hintIdx = 0; }
-    const pick = list[hintIdx % list.length];
+    if (key !== hintKey || !hintList) {
+      hintKey = key; hintIdx = 0;
+      const d = AI.decide(st, 0, AI.EXPERT);
+      const top = d.ranked.filter((x) => !(x.note && /不建议/.test(x.note)));
+      if (d.move) {            // 推荐出牌排第一
+        const first = { cards: d.move.cards, ins: d.move.ins, reason: d.reason };
+        hintList = [first].concat(top.filter((x) => !x.pass && x.cards !== d.move.cards).slice(0, 5));
+        if (st.table) hintList.push({ pass: true, reason: '也可以不出，留着牌' });
+      } else {
+        hintList = [{ pass: true, reason: d.reason }].concat(top.filter((x) => !x.pass).slice(0, 5));
+      }
+      hintList.forEach((h, i) => { if (!h.reason) h.reason = h.note && h.note !== '' ? h.note : '备选方案'; });
+      if (hintList.length === 1 && hintList[0].pass && !st.table) hintList = null;
+    }
+    if (!hintList || !hintList.length) { toast('要不起，选择「不出」'); hintMsg = '<b>要不起</b>，点「不出」'; render(); return; }
+    const pick = hintList[hintIdx % hintList.length];
+    const tag = hintList.length > 1 ? '（' + (hintIdx % hintList.length + 1) + '/' + hintList.length + '，再点换方案）' : '';
     hintIdx++;
-    selected = new Set(pick.cards);
+    if (pick.pass) {
+      selected = new Set();
+      hintMsg = pick.reason === '要不起' ? '<b>要不起</b>，点「不出」' : '💡 <b>建议不出</b>：' + pick.reason + tag;
+    } else {
+      selected = new Set(pick.cards);
+      const bomb = pick.ins.tier ? '<b>炸弹</b>' : '';
+      hintMsg = '💡 <b>' + G.TYPE_NAME[pick.ins.type] + '</b>' + (bomb ? ' ' + bomb : '') + '：' + pick.reason + tag;
+    }
     render();
   };
 
@@ -317,8 +339,8 @@ button { font: inherit; cursor: pointer; }
 
   function menu() {
     sheet('<h2>掼蛋</h2>' +
-      '<div class="row"><span>电脑水平</span><div class="seg">' + [[0, '简单'], [1, '普通']].map((v) => '<button data-lv="' + v[0] + '" class="' + (v[0] === save.level ? 'on' : '') + '">' + v[1] + '</button>').join('') + '</div></div>' +
-      '<div class="help"><b>玩法</b>：4 人 2 副牌，你和对家（上方）是一家。出完牌的先后决定「头游、二游…」，头游的一方升级，从 2 打到 A。<br>' +
+      '<div class="row"><span>电脑水平</span><div class="seg">' + LEVELS.map((v) => '<button data-lv="' + v[0] + '" class="' + (v[0] === save.level ? 'on' : '') + '">' + v[1] + '</button>').join('') + '</div></div>' +
+      '<div class="help"><b>难度</b>：简单≈随手出；普通≈会拆牌；<b>困难</b>会按「最少出牌回合」规划整手牌、记牌、懂得让队友、关键时刻才炸；<b>专家</b>在困难基础上对每手牌做多次模拟推演（思考更久）。<br><b>玩法</b>：4 人 2 副牌，你和对家（上方）是一家。出完牌的先后决定「头游、二游…」，头游的一方升级，从 2 打到 A。<br>' +
       '<b>级牌</b>：本局打几，几就是级牌，仅次于大小王；<b>红桃级牌是百搭</b>（可当任何牌，除大小王）。<br>' +
       '<b>牌型</b>：单张、对子、三张、三带二、顺子（5 张，A 可作 1 或 14）、木板（3 连对）、钢板（2 连三）。<br>' +
       '<b>炸弹</b>：4 张以上同点数、同花顺（5 张）、天王炸（4 张王）。大小：天王炸＞8 张＞7 张＞6 张＞同花顺＞5 张＞4 张。<br>' +
@@ -331,6 +353,18 @@ button { font: inherit; cursor: pointer; }
     $('cl').onclick = hide;
   }
 
+  function counter() {
+    const un = AI.unseenCards(st, 0);
+    const by = {};
+    let wild = 0;
+    for (const c of un) { if (G.isWild(c, st.L)) wild++; const r = G.rankOf(c); by[r] = (by[r] || 0) + 1; }
+    const order = [17, 16, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
+    const cell = (r) => { const n = by[r] || 0; return '<div class="' + (n === 0 ? 'z' : n >= 4 ? 'h' : '') + '">' + G.RANK_CH[r] + (r === st.L ? '<small>(级)</small>' : '') + '<b>' + n + '</b></div>'; };
+    sheet('<h2>记牌器</h2><div class="help" style="text-align:center">其他三家手里还剩的牌（不含你的手牌）</div><div class="cnt-grid">' + order.map(cell).join('') + '</div>' +
+      '<div class="help">橙色＝某点数还有 4 张以上，对手可能有炸弹；红桃' + LV(st.L) + '（百搭）还剩 <b>' + wild + '</b> 张。</div><button class="go" id="cl">关闭</button>');
+    $('cl').onclick = hide;
+  }
+  $('cntBtn').onclick = counter;
   $('menuBtn').onclick = menu;
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.Capacitor) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

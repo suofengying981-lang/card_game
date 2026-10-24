@@ -234,7 +234,7 @@
     const hands = [0, 1, 2, 3].map((p) => deck.slice(p * 27, p * 27 + 27));
     const st = {
       L, hands, table: null, turn: 0, leader: 0, responders: [], passedBy: [], finished: [], lastPlays: [null, null, null, null],
-      tribute: null, over: false, result: null, plays: 0,
+      tribute: null, over: false, result: null, plays: 0, played: [],
     };
     match.round++;
     if (prev) doTribute(st, prev);
@@ -291,6 +291,7 @@
     st.table = { player: p, cards: cards.slice(), ins };
     st.lastPlays[p] = { cards: cards.slice(), ins };
     st.plays++;
+    for (const c of cards) st.played.push(c);
     if (!st.hands[p].length) st.finished.push(p);
     st.responders = [0, 1, 2, 3].filter((q) => q !== p && active(st, q));
     st.passedBy = [];
